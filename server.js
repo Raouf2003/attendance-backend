@@ -71,7 +71,7 @@ mongoose.connect(process.env.MONGODB_URI)
 
       // Keep alive - ping every 14 minutes
       setInterval(() => {
-        https.get('https://attendanceapp-production-2f02.up.railway.app/api/health', (res) => {
+        https.get('https://attendance-backend-nds0.onrender.com/api/health', (res) => {
           console.log('Keep alive ping:', res.statusCode);
         }).on('error', (e) => {
           console.log('Keep alive error:', e.message);

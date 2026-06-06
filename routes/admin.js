@@ -61,11 +61,19 @@ router.post('/employees', authenticate, adminOnly, async (req, res) => {
 
 router.put('/employees/:id', authenticate, adminOnly, async (req, res) => {
   try {
-    const { fullName, password, isActive } = req.body;
+    const { employeeNumber, fullName, password, isActive } = req.body;
     const updateData = {};
 
     if (isActive !== undefined && req.params.id === req.employee._id.toString()) {
       return res.status(400).json({ message: 'Cannot deactivate yourself' });
+    }
+
+    if (employeeNumber) {
+      const existing = await Employee.findOne({ employeeNumber, _id: { $ne: req.params.id } });
+      if (existing) {
+        return res.status(400).json({ message: 'Employee number already exists' });
+      }
+      updateData.employeeNumber = employeeNumber;
     }
 
     if (fullName) updateData.fullName = fullName;

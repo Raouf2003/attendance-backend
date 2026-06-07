@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const Employee = require('../models/Employee');
 const Attendance = require('../models/Attendance');
+const Report = require('../models/Report');
 const { authenticate, adminOnly } = require('../middleware/auth');
 const { paginate, paginatedResponse } = require('../utils/pagination');
 const { cacheMiddleware, clearCache } = require('../middleware/cache');
@@ -364,6 +365,18 @@ router.get('/reports/monthly', authenticate, adminOnly, cacheMiddleware(), async
     });
   } catch (error) {
     console.error('Monthly report error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+router.get('/employee-reports', authenticate, adminOnly, async (req, res) => {
+  try {
+    const reports = await Report.find({})
+      .populate('employeeId', 'fullName employeeNumber')
+      .sort({ createdAt: -1 });
+    res.json({ reports });
+  } catch (error) {
+    console.error('Employee reports error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

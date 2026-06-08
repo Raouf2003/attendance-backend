@@ -1,7 +1,6 @@
 const express = require('express');
 const Attendance = require('../models/Attendance');
 const { authenticate } = require('../middleware/auth');
-const { haversineDistance } = require('../utils/haversine');
 
 const router = express.Router();
 
@@ -25,11 +24,7 @@ function getPeriodStatus(record) {
 
 router.post('/checkin', authenticate, async (req, res) => {
   try {
-    const { lat, lng, period } = req.body;
-
-    if (!lat || !lng) {
-      return res.status(400).json({ message: 'Location is required' });
-    }
+    const { period } = req.body;
 
     if (!period || !['morning', 'evening'].includes(period)) {
       return res.status(400).json({ message: 'Period must be morning or evening' });
@@ -44,17 +39,6 @@ router.post('/checkin', authenticate, async (req, res) => {
 
     if (period === 'evening' && (hour < 13 || hour >= 16)) {
       return res.status(400).json({ message: 'Evening check-in allowed between 13:00 and 16:00' });
-    }
-
-    const companyLat = parseFloat(process.env.COMPANY_LAT);
-    const companyLng = parseFloat(process.env.COMPANY_LNG);
-    const maxRadius = parseFloat(process.env.MAX_RADIUS_METERS);
-
-    const distance = haversineDistance(lat, lng, companyLat, companyLng);
-    if (distance > maxRadius) {
-      return res.status(400).json({
-        message: `You are outside the allowed area. Distance: ${Math.round(distance)}m, Max: ${maxRadius}m`,
-      });
     }
 
     const dateKey = getDateKey(now);
@@ -74,7 +58,6 @@ router.post('/checkin', authenticate, async (req, res) => {
       date: dateKey,
       period: period,
       checkInTime: now,
-      location: { lat, lng },
     });
 
     await attendance.save();

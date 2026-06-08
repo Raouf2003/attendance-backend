@@ -45,11 +45,11 @@ function startAutoCheckoutScheduler() {
     autoCheckoutPeriod('morning', 'Mon-Fri 12:00 morning');
   });
 
-  cron.schedule('0 16 * * 1-5', () => {
-    autoCheckoutPeriod('evening', 'Mon-Fri 16:00 evening');
+  cron.schedule('0 12 * * 1-5', () => {
+    autoCheckoutPeriod('evening', 'Mon-Fri 12:00 evening (TEST)');
   });
 
-  console.log('Auto checkout scheduler started (morning 12:00, evening 16:00 Mon-Fri)');
+  console.log('Auto checkout scheduler started (morning 12:00, evening 12:00 TEST MODE)');
 }
 
 module.exports = { startAutoCheckoutScheduler };

@@ -39,7 +39,7 @@ router.post('/checkin', authenticate, async (req, res) => {
       return res.status(400).json({ message: 'Morning check-in allowed between 08:00 and 12:00' });
     }
 
-    if (period === 'evening' && (hour < 1 || hour >= 12)) {
+    if (period === 'evening' && (hour < 1 || hour > 12)) {
       return res.status(400).json({ message: 'Evening check-in allowed between 01:00 and 12:00 (TEST MODE)' });
     }
 

@@ -10,6 +10,7 @@ const authRoutes = require('./routes/auth');
 const attendanceRoutes = require('./routes/attendance');
 const adminRoutes = require('./routes/admin');
 const employeeReportsRoutes = require('./routes/employeeReports');
+const verificationRoutes = require('./routes/verification');
 const { startAutoCheckoutScheduler } = require('./scheduler/autoCheckout');
 const Employee = require('./models/Employee');
 
@@ -24,6 +25,7 @@ app.use('/api', authRoutes);
 app.use('/api', attendanceRoutes);
 app.use('/api', adminRoutes);
 app.use('/api', employeeReportsRoutes);
+app.use('/api', verificationRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });

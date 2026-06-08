@@ -30,13 +30,15 @@ function verifyQrToken(token) {
 
 function cosineSimilarity(a, b) {
   if (!a || !b || a.length !== b.length) return 0;
-  let dot = 0, normA = 0, normB = 0;
+  let dot = 0, normA = 0, normB = 0, validDims = 0;
   for (let i = 0; i < a.length; i++) {
+    if (a[i] === -1 || b[i] === -1) continue;
     dot += a[i] * b[i];
     normA += a[i] * a[i];
     normB += b[i] * b[i];
+    validDims++;
   }
-  if (normA === 0 || normB === 0) return 0;
+  if (validDims < 10 || normA === 0 || normB === 0) return 0;
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
@@ -81,7 +83,7 @@ router.post('/verify-face', authenticate, async (req, res) => {
     }
 
     const similarity = cosineSimilarity(employee.faceDescriptor, descriptor);
-    const threshold = 0.65;
+    const threshold = 0.90;
 
     if (similarity >= threshold) {
       return res.json({ verified: true, similarity });

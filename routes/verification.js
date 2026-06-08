@@ -1,6 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const Employee = require('../models/Employee');
+const Attendance = require('../models/Attendance');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
@@ -72,9 +73,12 @@ router.post('/verify-qr', authenticate, async (req, res) => {
 
 router.post('/verify-face', authenticate, async (req, res) => {
   try {
-    const { descriptor } = req.body;
+    const { descriptor, period } = req.body;
     if (!descriptor || !Array.isArray(descriptor)) {
       return res.status(400).json({ message: 'Face descriptor is required' });
+    }
+    if (!period || !['morning', 'evening'].includes(period)) {
+      return res.status(400).json({ message: 'Period must be morning or evening' });
     }
 
     const employee = await Employee.findById(req.employee._id);
@@ -85,16 +89,50 @@ router.post('/verify-face', authenticate, async (req, res) => {
     const similarity = cosineSimilarity(employee.faceDescriptor, descriptor);
     const threshold = 0.90;
 
-    if (similarity >= threshold) {
-      return res.json({ verified: true, similarity });
+    if (similarity < threshold) {
+      return res.status(400).json({
+        verified: false,
+        message: 'Face does not match. Try again.',
+        similarity,
+      });
     }
 
-    res.status(400).json({
-      verified: false,
-      message: 'Face does not match. Try again.',
-      similarity,
+    const now = new Date();
+    const hour = now.getHours();
+    if (period === 'morning' && (hour < 8 || hour >= 12)) {
+      return res.status(400).json({ message: 'Morning check-in allowed between 08:00 and 12:00' });
+    }
+
+    const dateKey = now.toISOString().split('T')[0];
+    const existing = await Attendance.findOne({
+      employeeId: req.employee._id,
+      date: dateKey,
+      period: period,
+    });
+    if (existing) {
+      return res.status(400).json({ message: `Already checked in for ${period} period` });
+    }
+
+    const attendance = new Attendance({
+      employeeId: req.employee._id,
+      date: dateKey,
+      period: period,
+      checkInTime: now,
+    });
+    await attendance.save();
+
+    res.json({
+      verified: true,
+      message: 'Face verified. Check-in successful.',
+      attendance: {
+        id: attendance._id,
+        period: attendance.period,
+        checkInTime: attendance.checkInTime,
+        date: attendance.date,
+      },
     });
   } catch (error) {
+    console.error('Verify face error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

@@ -45,32 +45,35 @@ router.post('/employees', authenticate, adminOnly, async (req, res) => {
       return res.status(400).json({ message: 'All fields are required' });
     }
 
-    // Face enrollment is mandatory for all new employees
+    // Face enrollment is mandatory for employees, but admins don't need a face
+    const isAdminUser = role === 'admin';
     let descriptors = null;
 
-    // If faceDescriptors is already an array (new format), use it directly
-    // or if it's a single flat array (legacy), wrap it
-    if (Array.isArray(faceDescriptors)) {
-      if (faceDescriptors.length > 0 && Array.isArray(faceDescriptors[0])) {
-        descriptors = faceDescriptors;
-      } else if (faceDescriptors.length > 0 && typeof faceDescriptors[0] === 'number') {
-        descriptors = [faceDescriptors];
+    if (!isAdminUser) {
+      // If faceDescriptors is already an array (new format), use it directly
+      // or if it's a single flat array (legacy), wrap it
+      if (Array.isArray(faceDescriptors)) {
+        if (faceDescriptors.length > 0 && Array.isArray(faceDescriptors[0])) {
+          descriptors = faceDescriptors;
+        } else if (faceDescriptors.length > 0 && typeof faceDescriptors[0] === 'number') {
+          descriptors = [faceDescriptors];
+        }
       }
-    }
 
-    // Fallback to singular faceDescriptor (legacy)
-    if (!descriptors && Array.isArray(faceDescriptor)) {
-      if (Array.isArray(faceDescriptor[0])) {
-        descriptors = faceDescriptor;
-      } else {
-        descriptors = [faceDescriptor];
+      // Fallback to singular faceDescriptor (legacy)
+      if (!descriptors && Array.isArray(faceDescriptor)) {
+        if (Array.isArray(faceDescriptor[0])) {
+          descriptors = faceDescriptor;
+        } else {
+          descriptors = [faceDescriptor];
+        }
       }
     }
 
     console.log('[create] resolved descriptors:',
       descriptors ? `array[${descriptors.length}] samples` : 'null');
 
-    if (!descriptors) {
+    if (!descriptors && !isAdminUser) {
       return res.status(400).json({
         message: 'Face enrollment is required. Please capture the employee face before saving.',
         error: 'missing_face',
@@ -98,8 +101,8 @@ router.post('/employees', authenticate, adminOnly, async (req, res) => {
       role: role || 'employee',
       isActive: true,
       fingerprintRegistered: false,
-      faceDescriptors: descriptors,
-      faceEnrolled: true,
+      faceDescriptors: descriptors || [],
+      faceEnrolled: !isAdminUser && descriptors != null && descriptors.length > 0,
     });
 
     await employee.save();
@@ -113,7 +116,7 @@ router.post('/employees', authenticate, adminOnly, async (req, res) => {
         fullName: employee.fullName,
         role: employee.role,
         isActive: employee.isActive,
-        faceEnrolled: true,
+        faceEnrolled: employee.faceEnrolled,
       },
     });
   } catch (error) {

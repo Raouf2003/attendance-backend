@@ -172,9 +172,6 @@ router.post('/verify-checkin', authenticate, async (req, res) => {
         error: 'invalid_qr',
       });
     }
-    // Consume the session — each QR scan allows exactly one check-in attempt
-    qrVerifiedSessions.delete(employeeIdStr);
-
     // ── 3. Load stored face descriptor for this specific employee ──────────────
     const employee = await Employee.findById(req.employee._id);
     if (!employee) {
@@ -199,6 +196,7 @@ router.post('/verify-checkin', authenticate, async (req, res) => {
     }
 
     // ── 5. Both factors verified — perform check-in ────────────────────────────
+    qrVerifiedSessions.delete(employeeIdStr);
     const result = await performCheckIn(employee._id, period);
     if (!result.success) {
       return res.status(result.status).json({ message: result.message });

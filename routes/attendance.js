@@ -11,7 +11,7 @@ function getDateKey(date = new Date()) {
 
 function getCurrentPeriod() {
   const hour = new Date().getHours();
-  if (hour < 12) return 'morning';
+  if (hour < 8) return 'morning';
   return 'evening';
 }
 

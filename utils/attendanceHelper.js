@@ -16,11 +16,11 @@ async function performCheckIn(employeeId, period) {
   const now = new Date();
   const hour = now.getHours();
 
-  if (period === 'morning' && (hour < 7 || hour >= 12)) {
-    return { success: false, status: 400, message: 'Morning check-in allowed between 07:00 and 12:00' };
+  if (period === 'morning' && (hour < 7 || hour >= 8)) {
+    return { success: false, status: 400, message: 'Morning check-in allowed between 07:00 and 07:59' };
   }
-  if (period === 'evening' && (hour < 12 || hour >= 23)) {
-    return { success: false, status: 400, message: 'Evening check-in allowed between 12:00 and 22:59' };
+  if (period === 'evening' && (hour < 8 || hour >= 23)) {
+    return { success: false, status: 400, message: 'Evening check-in allowed between 08:00 and 22:59' };
   }
 
   const dateKey = getDateKey(now);

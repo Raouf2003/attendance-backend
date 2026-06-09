@@ -22,6 +22,13 @@ if (_rawSecret && _rawSecret !== 'fallback_secret' && !_rawSecret.startsWith('at
 
 const FACE_THRESHOLD = parseFloat(process.env.FACE_THRESHOLD) || 0.6;
 
+// ─── Track the most recently generated QR token ──────────────────────────
+// Only this token is valid for scanning. When the admin's screen refreshes
+// (auto-refresh every 30s or manual reload), a new token replaces it and
+// the old one becomes invalid immediately. Within a token's lifetime,
+// it can be scanned multiple times (no one-time-use consumption).
+let currentQrToken = null;
+
 // ─── Short-lived QR session store (employeeId → expiry timestamp) ─────────────
 // Set after a successful /verify-qr; consumed by /verify-checkin
 const qrVerifiedSessions = new Map();
@@ -32,11 +39,15 @@ function generateQrToken() {
   const nonce = crypto.randomBytes(16).toString('hex');
   const timeSlot = Math.floor(Date.now() / 30000);
   const hmac = crypto.createHmac('sha256', SECRET).update(`${timeSlot}.${nonce}`).digest('hex');
-  return `${timeSlot}.${nonce}.${hmac}`;
+  const token = `${timeSlot}.${nonce}.${hmac}`;
+  currentQrToken = token;
+  return token;
 }
 
 function validateQrToken(token) {
   try {
+    // Must be the most recently generated token
+    if (token !== currentQrToken) return false;
     const parts = token.split('.');
     if (parts.length !== 3) return false;
     const [timeSlot, nonce, hmac] = parts;
@@ -91,9 +102,10 @@ router.get('/qr-token', authenticate, async (req, res) => {
 /**
  * POST /verify-qr
  * Step 1 of check-in. Employee (authenticated via JWT) submits the scanned QR token.
- * If valid: consumes the QR token and creates a 60-second QR-verified session
- * tied to this employee's ID. Returns verified: true so the client can proceed
- * to the face capture step.
+ * If valid: creates a 60-second QR-verified session tied to this employee's ID.
+ * Returns verified: true so the client can proceed to the face capture step.
+ * The same QR token remains valid for other scans until the admin's display
+ * refreshes (generates a new token), at which point the old token is rejected.
  *
  * Security: the session is keyed by employeeId (from JWT), so no other employee
  * can "inherit" this QR verification.

@@ -2,6 +2,7 @@ const express = require('express');
 const Attendance = require('../models/Attendance');
 const { authenticate } = require('../middleware/auth');
 const { performCheckIn } = require('../utils/attendanceHelper');
+const { validateGeofence } = require('../utils/haversine');
 
 const router = express.Router();
 
@@ -24,8 +25,14 @@ function getPeriodStatus(record) {
 
 router.post('/checkin', authenticate, async (req, res) => {
   try {
-    const { period } = req.body;
-    const result = await performCheckIn(req.employee._id, period);
+    const { period, lat, lng } = req.body;
+
+    const geoCheck = validateGeofence(lat, lng);
+    if (!geoCheck.valid) {
+      return res.status(403).json({ message: geoCheck.message, error: 'geofence_blocked' });
+    }
+
+    const result = await performCheckIn(req.employee._id, period, { lat, lng });
     if (!result.success) {
       return res.status(result.status).json({ message: result.message });
     }
@@ -38,7 +45,7 @@ router.post('/checkin', authenticate, async (req, res) => {
 
 router.post('/checkout', authenticate, async (req, res) => {
   try {
-    const { period } = req.body;
+    const { period, autoCheckout } = req.body;
 
     if (!period || !['morning', 'evening'].includes(period)) {
       return res.status(400).json({ message: 'Period must be morning or evening' });
@@ -61,17 +68,22 @@ router.post('/checkout', authenticate, async (req, res) => {
       return res.status(400).json({ message: `Already checked out for ${period} period` });
     }
 
-    const minDuration = 1;
-    const diffMs = now - attendance.checkInTime;
-    const totalMinutes = Math.round(diffMs / 60000);
-    if (totalMinutes < minDuration) {
-      return res.status(400).json({
-        message: `Check-out too early. Minimum duration is ${minDuration} minute(s).`,
-      });
+    if (!autoCheckout) {
+      const minDuration = 1;
+      const diffMs = now - attendance.checkInTime;
+      const totalMinutes = Math.round(diffMs / 60000);
+      if (totalMinutes < minDuration) {
+        return res.status(400).json({
+          message: `Check-out too early. Minimum duration is ${minDuration} minute(s).`,
+        });
+      }
     }
 
     attendance.checkOutTime = now;
-    attendance.totalMinutes = totalMinutes;
+    attendance.totalMinutes = Math.round((now - attendance.checkInTime) / 60000);
+    if (autoCheckout) {
+      attendance.autoCheckout = true;
+    }
     await attendance.save();
 
     res.json({
@@ -82,6 +94,7 @@ router.post('/checkout', authenticate, async (req, res) => {
         checkInTime: attendance.checkInTime,
         checkOutTime: attendance.checkOutTime,
         totalMinutes: attendance.totalMinutes,
+        autoCheckout: attendance.autoCheckout,
       },
     });
   } catch (error) {

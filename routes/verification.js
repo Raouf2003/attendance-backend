@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const Employee = require('../models/Employee');
 const { authenticate } = require('../middleware/auth');
 const { performCheckIn } = require('../utils/attendanceHelper');
+const { validateGeofence } = require('../utils/haversine');
 
 const router = express.Router();
 
@@ -120,9 +121,14 @@ router.get('/qr-token', authenticate, async (req, res) => {
  */
 router.post('/verify-qr', authenticate, async (req, res) => {
   try {
-    const { token } = req.body;
+    const { token, lat, lng } = req.body;
     if (!token) {
       return res.status(400).json({ message: 'QR token is required', error: 'invalid_qr' });
+    }
+
+    const geoCheck = validateGeofence(lat, lng);
+    if (!geoCheck.valid) {
+      return res.status(403).json({ message: geoCheck.message, error: 'geofence_blocked' });
     }
 
     const isValid = validateQrToken(token);
@@ -167,7 +173,17 @@ router.post('/verify-checkin', authenticate, async (req, res) => {
       });
     }
 
-    // ── 3. Load stored face descriptors for this specific employee ────────────
+    // ── 3. Validate geofence ──────────────────────────────────────────────────
+    const { lat, lng } = req.body;
+    const geoCheck = validateGeofence(lat, lng);
+    if (!geoCheck.valid) {
+      return res.status(403).json({
+        message: geoCheck.message,
+        error: 'geofence_blocked',
+      });
+    }
+
+    // ── 4. Load stored face descriptors for this specific employee ────────────
     const employee = await Employee.findById(req.employee._id);
     if (!employee) {
       return res.status(404).json({ message: 'Employee not found' });
@@ -239,7 +255,7 @@ router.post('/verify-checkin', authenticate, async (req, res) => {
 
     // ── 5. Both factors verified — perform check-in ────────────────────────────
     qrVerifiedSessions.delete(employeeIdStr);
-    const result = await performCheckIn(employee._id, period);
+    const result = await performCheckIn(employee._id, period, { lat, lng });
     if (!result.success) {
       return res.status(result.status).json({ message: result.message });
     }

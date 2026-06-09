@@ -11,7 +11,6 @@ function getDateKey(date = new Date()) {
 function getCurrentPeriod() {
   const hour = new Date().getHours();
   if (hour < 12) return 'morning';
-  if (hour < 13) return 'break';
   return 'evening';
 }
 
@@ -35,11 +34,13 @@ router.post('/checkin', authenticate, async (req, res) => {
     const now = new Date();
     const hour = now.getHours();
 
-    if (period === 'morning' && (hour < 8 || hour >= 12)) {
-      return res.status(400).json({ message: 'Morning check-in allowed between 08:00 and 12:00' });
+    if (period === 'morning' && (hour < 7 || hour >= 12)) {
+      return res.status(400).json({ message: 'Morning check-in allowed between 07:00 and 12:00' });
     }
 
-    // TEST: evening time validation removed
+    if (period === 'evening' && (hour < 12 || hour >= 17)) {
+      return res.status(400).json({ message: 'Evening check-in allowed between 12:00 and 17:00' });
+    }
 
     const dateKey = getDateKey(now);
 
@@ -102,9 +103,15 @@ router.post('/checkout', authenticate, async (req, res) => {
       return res.status(400).json({ message: `Already checked out for ${period} period` });
     }
 
-    attendance.checkOutTime = now;
+    const minDuration = 1;
     const diffMs = now - attendance.checkInTime;
-    attendance.totalMinutes = Math.round(diffMs / 60000);
+    const totalMinutes = Math.round(diffMs / 60000);
+    if (totalMinutes < minDuration) {
+      return res.status(400).json({ message: `Check-out too early. Minimum duration is ${minDuration} minute(s).` });
+    }
+
+    attendance.checkOutTime = now;
+    attendance.totalMinutes = totalMinutes;
     await attendance.save();
 
     res.json({

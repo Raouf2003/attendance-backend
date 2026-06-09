@@ -5,14 +5,21 @@ const employeeSchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true,
+    trim: true,
+    minlength: 1,
+    maxlength: 50,
   },
   fullName: {
     type: String,
     required: true,
+    trim: true,
+    minlength: 1,
+    maxlength: 100,
   },
   password: {
     type: String,
     required: true,
+    minlength: 4,
   },
   role: {
     type: String,
@@ -34,6 +41,11 @@ const employeeSchema = new mongoose.Schema({
   faceDescriptor: {
     type: [Number],
     default: null,
+    select: false,
+  },
+  faceRegistered: {
+    type: Boolean,
+    default: false,
   },
 }, { timestamps: true });
 

@@ -12,12 +12,13 @@ router.get('/attendance-history', authenticate, async (req, res) => {
     const targetMonth = parseInt(month) || (now.getMonth() + 1);
     const targetYear = parseInt(year) || now.getFullYear();
     const monthStr = String(targetMonth).padStart(2, '0');
+    const lastDay = String(new Date(targetYear, targetMonth, 0).getDate()).padStart(2, '0');
 
     const records = await Attendance.find({
       employeeId: req.employee._id,
       date: {
         $gte: `${targetYear}-${monthStr}-01`,
-        $lte: `${targetYear}-${monthStr}-31`,
+        $lte: `${targetYear}-${monthStr}-${lastDay}`,
       },
     }).sort({ date: -1, period: 1 });
 
@@ -63,11 +64,15 @@ router.post('/reports', authenticate, async (req, res) => {
       return res.status(400).json({ message: 'Description is required' });
     }
 
+    if (photo && typeof photo === 'string' && photo.length > 5000000) {
+      return res.status(400).json({ message: 'Photo data too large (max 5MB)' });
+    }
+
     const report = new Report({
       employeeId: req.employee._id,
       type,
       description,
-      photo: photo || null,
+      photo: (photo && typeof photo === 'string' && photo.startsWith('data:image')) ? photo : null,
     });
 
     await report.save();

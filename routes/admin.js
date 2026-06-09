@@ -15,6 +15,15 @@ function formatMinutes(totalMinutes) {
   return `${h}h ${m}m`;
 }
 
+function sanitizeCsvField(value) {
+  if (value == null) return '';
+  const str = String(value);
+  if (str.startsWith('=') || str.startsWith('+') || str.startsWith('-') || str.startsWith('@') || str.startsWith('\t') || str.startsWith('\r')) {
+    return `'${str}`;
+  }
+  return str;
+}
+
 router.post('/employees', authenticate, adminOnly, async (req, res) => {
   try {
     const { employeeNumber, fullName, password, role } = req.body;
@@ -114,6 +123,10 @@ router.put('/employees/:id', authenticate, adminOnly, async (req, res) => {
 
 router.delete('/employees/:id', authenticate, adminOnly, async (req, res) => {
   try {
+    if (req.params.id === req.employee._id.toString()) {
+      return res.status(400).json({ message: 'Cannot delete yourself' });
+    }
+
     const employee = await Employee.findByIdAndDelete(req.params.id);
     if (!employee) {
       return res.status(404).json({ message: 'Employee not found' });
@@ -199,10 +212,10 @@ router.get('/reports/daily/export', authenticate, adminOnly, async (req, res) =>
       if (!r.employeeId) continue;
       const checkIn = r.checkInTime ? new Date(r.checkInTime).toLocaleTimeString('en-GB', { hour12: false }) : '-';
       const checkOut = r.checkOutTime ? new Date(r.checkOutTime).toLocaleTimeString('en-GB', { hour12: false }) : '-';
-      csv += `${r.employeeId.fullName},${r.employeeId.employeeNumber},${r.period},${checkIn},${checkOut},${r.totalMinutes || 0},${r.autoCheckout || false}\n`;
+      csv += `${sanitizeCsvField(r.employeeId.fullName)},${sanitizeCsvField(r.employeeId.employeeNumber)},${sanitizeCsvField(r.period)},${sanitizeCsvField(checkIn)},${sanitizeCsvField(checkOut)},${r.totalMinutes || 0},${r.autoCheckout || false}\n`;
     }
 
-    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename=attendance_${targetDate}.csv`);
     res.send(csv);
   } catch (error) {
@@ -219,10 +232,11 @@ router.get('/reports/monthly/export', authenticate, adminOnly, async (req, res) 
 
     const monthStr = String(targetMonth).padStart(2, '0');
 
+    const lastDay = new Date(targetYear, targetMonth, 0).getDate();
     const records = await Attendance.find({
       date: {
         $gte: `${targetYear}-${monthStr}-01`,
-        $lte: `${targetYear}-${monthStr}-31`,
+        $lte: `${targetYear}-${monthStr}-${String(lastDay).padStart(2, '0')}`,
       },
     }).populate('employeeId', 'fullName employeeNumber').sort({ date: 1 });
 
@@ -232,10 +246,10 @@ router.get('/reports/monthly/export', authenticate, adminOnly, async (req, res) 
       if (!r.employeeId) continue;
       const checkIn = r.checkInTime ? new Date(r.checkInTime).toLocaleTimeString('en-GB', { hour12: false }) : '-';
       const checkOut = r.checkOutTime ? new Date(r.checkOutTime).toLocaleTimeString('en-GB', { hour12: false }) : '-';
-      csv += `${r.employeeId.fullName},${r.employeeId.employeeNumber},${r.date},${r.period},${checkIn},${checkOut},${r.totalMinutes || 0},${r.autoCheckout || false}\n`;
+      csv += `${sanitizeCsvField(r.employeeId.fullName)},${sanitizeCsvField(r.employeeId.employeeNumber)},${sanitizeCsvField(r.date)},${sanitizeCsvField(r.period)},${sanitizeCsvField(checkIn)},${sanitizeCsvField(checkOut)},${r.totalMinutes || 0},${r.autoCheckout || false}\n`;
     }
 
-    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename=attendance_${targetYear}_${monthStr}.csv`);
     res.send(csv);
   } catch (error) {
@@ -261,10 +275,10 @@ router.get('/reports/employee/:id/export', authenticate, adminOnly, async (req, 
     for (const r of records) {
       const checkIn = r.checkInTime ? new Date(r.checkInTime).toLocaleTimeString('en-GB', { hour12: false }) : '-';
       const checkOut = r.checkOutTime ? new Date(r.checkOutTime).toLocaleTimeString('en-GB', { hour12: false }) : '-';
-      csv += `${r.date},${r.period},${checkIn},${checkOut},${r.totalMinutes || 0},${r.autoCheckout || false}\n`;
+      csv += `${sanitizeCsvField(r.date)},${sanitizeCsvField(r.period)},${sanitizeCsvField(checkIn)},${sanitizeCsvField(checkOut)},${r.totalMinutes || 0},${r.autoCheckout || false}\n`;
     }
 
-    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename=${employee.employeeNumber}_attendance.csv`);
     res.send(csv);
   } catch (error) {
@@ -301,10 +315,11 @@ router.get('/reports/monthly', authenticate, adminOnly, cacheMiddleware(), async
     const targetMonth = parseInt(month) || (now.getMonth() + 1);
 
     const monthStr = String(targetMonth).padStart(2, '0');
+    const lastDay = String(new Date(targetYear, targetMonth, 0).getDate()).padStart(2, '0');
 
     const dateFilter = {
       $gte: `${targetYear}-${monthStr}-01`,
-      $lte: `${targetYear}-${monthStr}-31`,
+      $lte: `${targetYear}-${monthStr}-${lastDay}`,
     };
 
     const pageNum = Math.max(1, parseInt(page) || 1);

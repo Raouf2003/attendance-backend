@@ -112,6 +112,8 @@ router.get('/status', authenticate, async (req, res) => {
         id: req.employee._id,
         fullName: req.employee.fullName,
         employeeNumber: req.employee.employeeNumber,
+        role: req.employee.role,
+        isActive: req.employee.isActive,
         fingerprintRegistered: req.employee.fingerprintRegistered || false,
         faceEnrolled: req.employee.faceEnrolled || false,
       },

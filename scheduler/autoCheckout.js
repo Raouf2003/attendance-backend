@@ -45,19 +45,19 @@ function startAutoCheckoutScheduler() {
     autoCheckoutPeriod('morning', 'Mon-Fri 12:00 morning');
   });
 
-  cron.schedule('0 17 * * 1-5', () => {
-    autoCheckoutPeriod('evening', 'Mon-Fri 17:00 evening');
+  cron.schedule('0 23 * * 1-5', () => {
+    autoCheckoutPeriod('evening', 'Mon-Fri 23:00 evening');
   });
 
   cron.schedule('30 12 * * 0,6', () => {
     autoCheckoutPeriod('morning', 'Weekend 12:30 morning');
   });
 
-  cron.schedule('30 17 * * 0,6', () => {
-    autoCheckoutPeriod('evening', 'Weekend 17:30 evening');
+  cron.schedule('0 23 * * 0,6', () => {
+    autoCheckoutPeriod('evening', 'Weekend 23:00 evening');
   });
 
-  console.log('Auto checkout scheduler started (morning 12:00, evening 17:00, weekends 12:30/17:30)');
+  console.log('Auto checkout scheduler started (morning 12:00, evening 23:00, weekends 12:30/23:00)');
 }
 
 module.exports = { startAutoCheckoutScheduler };

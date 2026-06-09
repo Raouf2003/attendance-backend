@@ -5,7 +5,20 @@ const { authenticate } = require('../middleware/auth');
 const { performCheckIn } = require('../utils/attendanceHelper');
 
 const router = express.Router();
-const SECRET = process.env.JWT_SECRET || 'fallback_secret';
+
+// Generate a random per-process secret if none is configured
+const _secret = process.env.JWT_SECRET;
+if (!_secret || _secret === 'fallback_secret' || _secret.startsWith('attApp_$(openssl')) {
+  if (!_secret) {
+    console.warn('[verification] WARNING: JWT_SECRET not set. Generating ephemeral secret (all tokens invalidated on restart).');
+  } else {
+    console.warn('[verification] WARNING: JWT_SECRET appears to be a placeholder. Generating ephemeral secret.');
+  }
+}
+const SECRET = (_secret && _secret !== 'fallback_secret' && !_secret.startsWith('attApp_$(openssl'))
+  ? _secret
+  : crypto.randomBytes(32).toString('hex'));
+
 const FACE_THRESHOLD = parseFloat(process.env.FACE_THRESHOLD) || 0.6;
 
 // ─── One-time-use QR token store ──────────────────────────────────────────────

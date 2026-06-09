@@ -22,13 +22,6 @@ if (_rawSecret && _rawSecret !== 'fallback_secret' && !_rawSecret.startsWith('at
 
 const FACE_THRESHOLD = parseFloat(process.env.FACE_THRESHOLD) || 0.6;
 
-// ─── Track the most recently generated QR token ──────────────────────────
-// Only this token is valid for scanning. When the admin's screen refreshes
-// (auto-refresh every 30s or manual reload), a new token replaces it and
-// the old one becomes invalid immediately. Within a token's lifetime,
-// it can be scanned multiple times (no one-time-use consumption).
-let currentQrToken = null;
-
 // ─── Short-lived QR session store (employeeId → expiry timestamp) ─────────────
 // Set after a successful /verify-qr; consumed by /verify-checkin
 const qrVerifiedSessions = new Map();
@@ -39,15 +32,11 @@ function generateQrToken() {
   const nonce = crypto.randomBytes(16).toString('hex');
   const timeSlot = Math.floor(Date.now() / 30000);
   const hmac = crypto.createHmac('sha256', SECRET).update(`${timeSlot}.${nonce}`).digest('hex');
-  const token = `${timeSlot}.${nonce}.${hmac}`;
-  currentQrToken = token;
-  return token;
+  return `${timeSlot}.${nonce}.${hmac}`;
 }
 
 function validateQrToken(token) {
   try {
-    // Must be the most recently generated token
-    if (token !== currentQrToken) return false;
     const parts = token.split('.');
     if (parts.length !== 3) return false;
     const [timeSlot, nonce, hmac] = parts;
@@ -56,8 +45,12 @@ function validateQrToken(token) {
       .update(`${timeSlot}.${nonce}`)
       .digest('hex');
     if (!crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(expectedHmac))) return false;
+    // Only accept the CURRENT 30-second time-slot (not the previous one).
+    // A QR code is only valid while it's displayed on the admin's screen.
+    // The admin's screen auto-refreshes every 30s, so the QR naturally
+    // expires when the time-slot rolls over.
     const currentSlot = Math.floor(Date.now() / 30000);
-    if (timeSlot !== String(currentSlot) && timeSlot !== String(currentSlot - 1)) return false;
+    if (timeSlot !== String(currentSlot)) return false;
     return true;
   } catch {
     return false;
@@ -102,10 +95,10 @@ router.get('/qr-token', authenticate, async (req, res) => {
 /**
  * POST /verify-qr
  * Step 1 of check-in. Employee (authenticated via JWT) submits the scanned QR token.
+ * The token is valid for multiple scans within its 30-second time-slot, but
+ * automatically expires once the time-slot rolls over (admin's screen refreshes).
  * If valid: creates a 60-second QR-verified session tied to this employee's ID.
  * Returns verified: true so the client can proceed to the face capture step.
- * The same QR token remains valid for other scans until the admin's display
- * refreshes (generates a new token), at which point the old token is rejected.
  *
  * Security: the session is keyed by employeeId (from JWT), so no other employee
  * can "inherit" this QR verification.

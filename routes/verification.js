@@ -17,7 +17,7 @@ function generateQrToken() {
   return `${timeSlot}.${nonce}.${hmac}`;
 }
 
-function verifyQrToken(token) {
+function validateQrToken(token) {
   try {
     if (usedTokens.has(token)) return false;
     const parts = token.split('.');
@@ -27,14 +27,17 @@ function verifyQrToken(token) {
     if (!crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(expectedHmac))) return false;
     const currentSlot = Math.floor(Date.now() / 30000);
     if (timeSlot !== String(currentSlot) && timeSlot !== String(currentSlot - 1)) return false;
-    usedTokens.add(token);
-    if (usedTokens.size > 10000) {
-      const toDelete = [...usedTokens].slice(0, 1000);
-      for (const t of toDelete) usedTokens.delete(t);
-    }
     return true;
   } catch (e) {
     return false;
+  }
+}
+
+function consumeToken(token) {
+  usedTokens.add(token);
+  if (usedTokens.size > 10000) {
+    const toDelete = [...usedTokens].slice(0, 1000);
+    for (const t of toDelete) usedTokens.delete(t);
   }
 }
 
@@ -64,7 +67,7 @@ router.post('/verify-qr', authenticate, async (req, res) => {
     if (!token) {
       return res.status(400).json({ message: 'QR token is required' });
     }
-    const isValid = verifyQrToken(token);
+    const isValid = validateQrToken(token);
     if (!isValid) {
       return res.status(400).json({ message: 'Invalid or expired QR code' });
     }
@@ -78,9 +81,10 @@ router.post('/verify-face', authenticate, async (req, res) => {
   try {
     const { period, qrToken, faceDescriptor } = req.body;
 
-    if (!qrToken || !verifyQrToken(qrToken)) {
+    if (!qrToken || !validateQrToken(qrToken)) {
       return res.status(400).json({ message: 'Invalid or expired QR code' });
     }
+    consumeToken(qrToken);
 
     if (!period || !['morning', 'evening'].includes(period)) {
       return res.status(400).json({ message: 'Period must be morning or evening' });

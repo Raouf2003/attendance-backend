@@ -27,10 +27,18 @@ function sanitizeCsvField(value) {
 
 router.post('/employees', authenticate, adminOnly, async (req, res) => {
   try {
-    const { employeeNumber, fullName, password, role } = req.body;
+    const { employeeNumber, fullName, password, role, faceDescriptor } = req.body;
 
     if (!employeeNumber || !fullName || !password) {
       return res.status(400).json({ message: 'All fields are required' });
+    }
+
+    // Face enrollment is mandatory for all new employees
+    if (!faceDescriptor || !Array.isArray(faceDescriptor) || faceDescriptor.length < 2) {
+      return res.status(400).json({
+        message: 'Face enrollment is required. Please capture the employee face before saving.',
+        error: 'missing_face',
+      });
     }
 
     const existing = await Employee.findOne({ employeeNumber });
@@ -48,10 +56,11 @@ router.post('/employees', authenticate, adminOnly, async (req, res) => {
       role: role || 'employee',
       isActive: true,
       fingerprintRegistered: false,
+      faceDescriptor,
+      faceEnrolled: true,
     });
 
     await employee.save();
-
     clearCache();
 
     res.status(201).json({
@@ -62,8 +71,46 @@ router.post('/employees', authenticate, adminOnly, async (req, res) => {
         fullName: employee.fullName,
         role: employee.role,
         isActive: employee.isActive,
-        fingerprintRegistered: false,
+        faceEnrolled: true,
       },
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+/**
+ * POST /employees/enroll-face/:id
+ * Re-enroll (or initially enroll) a face for an existing employee.
+ * Admin only. Accepts a 128-float faceDescriptor array.
+ */
+router.post('/employees/enroll-face/:id', authenticate, adminOnly, async (req, res) => {
+  try {
+    const { faceDescriptor } = req.body;
+
+    if (!faceDescriptor || !Array.isArray(faceDescriptor) || faceDescriptor.length < 2) {
+      return res.status(400).json({
+        message: 'A valid face descriptor is required',
+        error: 'missing_face',
+      });
+    }
+
+    const employee = await Employee.findByIdAndUpdate(
+      req.params.id,
+      { faceDescriptor, faceEnrolled: true },
+      { new: true }
+    );
+
+    if (!employee) {
+      return res.status(404).json({ message: 'Employee not found' });
+    }
+
+    clearCache();
+
+    res.json({
+      message: 'Face enrolled successfully',
+      faceEnrolled: true,
+      employeeId: employee._id,
     });
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
@@ -148,7 +195,7 @@ router.get('/employees', authenticate, adminOnly, async (req, res) => {
     const { page, limit } = req.query;
     const total = await Employee.countDocuments({});
     const employees = await paginate(
-      Employee.find({}).select('employeeNumber fullName role isActive fingerprintRegistered createdAt').sort({ createdAt: -1 }),
+      Employee.find({}).select('employeeNumber fullName role isActive fingerprintRegistered faceEnrolled createdAt').sort({ createdAt: -1 }),
       page,
       limit
     );

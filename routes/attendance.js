@@ -1,6 +1,7 @@
 const express = require('express');
 const Attendance = require('../models/Attendance');
 const { authenticate } = require('../middleware/auth');
+const { performCheckIn } = require('../utils/attendanceHelper');
 
 const router = express.Router();
 
@@ -14,8 +15,6 @@ function getCurrentPeriod() {
   return 'evening';
 }
 
-// TEST MODE: evening 01:00-12:00
-
 function getPeriodStatus(record) {
   if (!record) return 'not_started';
   if (record.checkInTime && !record.checkOutTime) return 'working';
@@ -26,52 +25,11 @@ function getPeriodStatus(record) {
 router.post('/checkin', authenticate, async (req, res) => {
   try {
     const { period } = req.body;
-
-    if (!period || !['morning', 'evening'].includes(period)) {
-      return res.status(400).json({ message: 'Period must be morning or evening' });
+    const result = await performCheckIn(req.employee._id, period);
+    if (!result.success) {
+      return res.status(result.status).json({ message: result.message });
     }
-
-    const now = new Date();
-    const hour = now.getHours();
-
-    if (period === 'morning' && (hour < 7 || hour >= 12)) {
-      return res.status(400).json({ message: 'Morning check-in allowed between 07:00 and 12:00' });
-    }
-
-    if (period === 'evening' && (hour < 12 || hour >= 17)) {
-      return res.status(400).json({ message: 'Evening check-in allowed between 12:00 and 17:00' });
-    }
-
-    const dateKey = getDateKey(now);
-
-    const existing = await Attendance.findOne({
-      employeeId: req.employee._id,
-      date: dateKey,
-      period: period,
-    });
-
-    if (existing) {
-      return res.status(400).json({ message: `Already checked in for ${period} period` });
-    }
-
-    const attendance = new Attendance({
-      employeeId: req.employee._id,
-      date: dateKey,
-      period: period,
-      checkInTime: now,
-    });
-
-    await attendance.save();
-
-    res.json({
-      message: 'Check-in successful',
-      attendance: {
-        id: attendance._id,
-        period: attendance.period,
-        checkInTime: attendance.checkInTime,
-        date: attendance.date,
-      },
-    });
+    res.json({ message: 'Check-in successful', attendance: result.attendance });
   } catch (error) {
     console.error('Check-in error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -107,7 +65,9 @@ router.post('/checkout', authenticate, async (req, res) => {
     const diffMs = now - attendance.checkInTime;
     const totalMinutes = Math.round(diffMs / 60000);
     if (totalMinutes < minDuration) {
-      return res.status(400).json({ message: `Check-out too early. Minimum duration is ${minDuration} minute(s).` });
+      return res.status(400).json({
+        message: `Check-out too early. Minimum duration is ${minDuration} minute(s).`,
+      });
     }
 
     attendance.checkOutTime = now;
@@ -146,19 +106,14 @@ router.get('/status', authenticate, async (req, res) => {
 
     res.json({
       currentPeriod,
-      morning: {
-        status: getPeriodStatus(morning),
-        attendance: morning,
-      },
-      evening: {
-        status: getPeriodStatus(evening),
-        attendance: evening,
-      },
+      morning: { status: getPeriodStatus(morning), attendance: morning },
+      evening: { status: getPeriodStatus(evening), attendance: evening },
       employee: {
         id: req.employee._id,
         fullName: req.employee.fullName,
         employeeNumber: req.employee.employeeNumber,
         fingerprintRegistered: req.employee.fingerprintRegistered || false,
+        faceEnrolled: req.employee.faceEnrolled || false,
       },
     });
   } catch (error) {

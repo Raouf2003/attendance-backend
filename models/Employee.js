@@ -34,15 +34,6 @@ const employeeSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
-  faceDescriptor: {
-    type: [Number],
-    default: null,
-    select: false,
-  },
-  faceRegistered: {
-    type: Boolean,
-    default: false,
-  },
 }, { timestamps: true });
 
 employeeSchema.index({ role: 1 });

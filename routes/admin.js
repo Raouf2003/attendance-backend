@@ -6,7 +6,7 @@ const Report = require('../models/Report');
 const { authenticate, adminOnly } = require('../middleware/auth');
 const { paginate, paginatedResponse } = require('../utils/pagination');
 const { cacheMiddleware, clearCache } = require('../middleware/cache');
-const { validateDescriptor } = require('../utils/faceUtils');
+
 
 const router = express.Router();
 
@@ -27,14 +27,10 @@ function sanitizeCsvField(value) {
 
 router.post('/employees', authenticate, adminOnly, async (req, res) => {
   try {
-    const { employeeNumber, fullName, password, role, faceDescriptor } = req.body;
+    const { employeeNumber, fullName, password, role } = req.body;
 
     if (!employeeNumber || !fullName || !password) {
       return res.status(400).json({ message: 'All fields are required' });
-    }
-
-    if (!faceDescriptor || !validateDescriptor(faceDescriptor)) {
-      return res.status(400).json({ message: 'Valid face descriptor is required' });
     }
 
     const existing = await Employee.findOne({ employeeNumber });
@@ -52,8 +48,6 @@ router.post('/employees', authenticate, adminOnly, async (req, res) => {
       role: role || 'employee',
       isActive: true,
       fingerprintRegistered: false,
-      faceDescriptor,
-      faceRegistered: true,
     });
 
     await employee.save();
@@ -61,7 +55,7 @@ router.post('/employees', authenticate, adminOnly, async (req, res) => {
     clearCache();
 
     res.status(201).json({
-      message: 'Employee created with face registered',
+      message: 'Employee created',
       employee: {
         id: employee._id,
         employeeNumber: employee.employeeNumber,
@@ -69,7 +63,6 @@ router.post('/employees', authenticate, adminOnly, async (req, res) => {
         role: employee.role,
         isActive: employee.isActive,
         fingerprintRegistered: false,
-        faceRegistered: true,
       },
     });
   } catch (error) {
@@ -155,7 +148,7 @@ router.get('/employees', authenticate, adminOnly, async (req, res) => {
     const { page, limit } = req.query;
     const total = await Employee.countDocuments({});
     const employees = await paginate(
-      Employee.find({}).select('employeeNumber fullName role isActive faceRegistered fingerprintRegistered createdAt').sort({ createdAt: -1 }),
+      Employee.find({}).select('employeeNumber fullName role isActive fingerprintRegistered createdAt').sort({ createdAt: -1 }),
       page,
       limit
     );

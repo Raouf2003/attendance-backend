@@ -7,17 +7,18 @@ const { performCheckIn } = require('../utils/attendanceHelper');
 const router = express.Router();
 
 // Generate a random per-process secret if none is configured
-const _secret = process.env.JWT_SECRET;
-if (!_secret || _secret === 'fallback_secret' || _secret.startsWith('attApp_$(openssl')) {
-  if (!_secret) {
+const _rawSecret = process.env.JWT_SECRET;
+var SECRET;
+if (_rawSecret && _rawSecret !== 'fallback_secret' && !_rawSecret.startsWith('attApp_')) {
+  SECRET = _rawSecret;
+} else {
+  if (!_rawSecret) {
     console.warn('[verification] WARNING: JWT_SECRET not set. Generating ephemeral secret (all tokens invalidated on restart).');
   } else {
     console.warn('[verification] WARNING: JWT_SECRET appears to be a placeholder. Generating ephemeral secret.');
   }
+  SECRET = crypto.randomBytes(32).toString('hex');
 }
-const SECRET = (_secret && _secret !== 'fallback_secret' && !_secret.startsWith('attApp_$(openssl'))
-  ? _secret
-  : crypto.randomBytes(32).toString('hex'));
 
 const FACE_THRESHOLD = parseFloat(process.env.FACE_THRESHOLD) || 0.6;
 

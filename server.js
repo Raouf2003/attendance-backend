@@ -21,7 +21,7 @@ const PORT = process.env.PORT || 3000;
 
 const MONGODB_URI = process.env.MONGODB_URI;
 if (!MONGODB_URI) {
-  console.error('FATAL: MONGODB_URI environment variable is not set');
+  console.error('FATAL: MONGODB_URI environment variable is not set. Set it in Render dashboard (Environment Variables) or create a .env file.');
   process.exit(1);
 }
 
@@ -76,7 +76,8 @@ app.use((err, req, res, next) => {
 
 mongoose.connect(MONGODB_URI, {
   maxPoolSize: 10,
-  serverSelectionTimeoutMS: 5000,
+  serverSelectionTimeoutMS: 30000,
+  socketTimeoutMS: 45000,
 }).then(async () => {
   console.log('Connected to MongoDB');
 

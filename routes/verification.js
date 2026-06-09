@@ -22,9 +22,6 @@ if (_rawSecret && _rawSecret !== 'fallback_secret' && !_rawSecret.startsWith('at
 
 const FACE_THRESHOLD = parseFloat(process.env.FACE_THRESHOLD) || 0.6;
 
-// ─── One-time-use QR token store ──────────────────────────────────────────────
-const usedTokens = new Set();
-
 // ─── Short-lived QR session store (employeeId → expiry timestamp) ─────────────
 // Set after a successful /verify-qr; consumed by /verify-checkin
 const qrVerifiedSessions = new Map();
@@ -40,7 +37,6 @@ function generateQrToken() {
 
 function validateQrToken(token) {
   try {
-    if (usedTokens.has(token)) return false;
     const parts = token.split('.');
     if (parts.length !== 3) return false;
     const [timeSlot, nonce, hmac] = parts;
@@ -54,14 +50,6 @@ function validateQrToken(token) {
     return true;
   } catch {
     return false;
-  }
-}
-
-function consumeQrToken(token) {
-  usedTokens.add(token);
-  if (usedTokens.size > 10000) {
-    const toDelete = [...usedTokens].slice(0, 1000);
-    for (const t of toDelete) usedTokens.delete(t);
   }
 }
 
@@ -121,9 +109,6 @@ router.post('/verify-qr', authenticate, async (req, res) => {
     if (!isValid) {
       return res.status(400).json({ message: 'Invalid or expired QR code', error: 'invalid_qr' });
     }
-
-    // Consume the QR token — it cannot be replayed
-    consumeQrToken(token);
 
     // Record a 60-second window for this employee to complete face verification
     const employeeIdStr = req.employee._id.toString();

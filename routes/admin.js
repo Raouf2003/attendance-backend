@@ -1,24 +1,14 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const multer = require('multer');
 const Employee = require('../models/Employee');
 const Attendance = require('../models/Attendance');
 const Report = require('../models/Report');
 const { authenticate, adminOnly } = require('../middleware/auth');
 const { paginate, paginatedResponse } = require('../utils/pagination');
 const { cacheMiddleware, clearCache } = require('../middleware/cache');
-const { extractDescriptor } = require('../utils/faceUtils');
+const { validateDescriptor } = require('../utils/faceUtils');
 
 const router = express.Router();
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) cb(null, true);
-    else cb(new Error('Only image files are allowed'));
-  },
-});
 
 function formatMinutes(totalMinutes) {
   const h = Math.floor(totalMinutes / 60);
@@ -35,21 +25,16 @@ function sanitizeCsvField(value) {
   return str;
 }
 
-router.post('/employees', authenticate, adminOnly, upload.single('image'), async (req, res) => {
+router.post('/employees', authenticate, adminOnly, async (req, res) => {
   try {
-    const { employeeNumber, fullName, password, role } = req.body;
+    const { employeeNumber, fullName, password, role, faceDescriptor } = req.body;
 
     if (!employeeNumber || !fullName || !password) {
       return res.status(400).json({ message: 'All fields are required' });
     }
 
-    if (!req.file) {
-      return res.status(400).json({ message: 'Face photo is required' });
-    }
-
-    const descriptor = await extractDescriptor(req.file.buffer);
-    if (!descriptor) {
-      return res.status(400).json({ noFaceDetected: true, message: 'No face detected in image. Please try again with a clear face photo.' });
+    if (!faceDescriptor || !validateDescriptor(faceDescriptor)) {
+      return res.status(400).json({ message: 'Valid face descriptor is required' });
     }
 
     const existing = await Employee.findOne({ employeeNumber });
@@ -67,7 +52,7 @@ router.post('/employees', authenticate, adminOnly, upload.single('image'), async
       role: role || 'employee',
       isActive: true,
       fingerprintRegistered: false,
-      faceDescriptor: descriptor,
+      faceDescriptor,
       faceRegistered: true,
     });
 
@@ -235,7 +220,7 @@ router.get('/reports/daily/export', authenticate, adminOnly, async (req, res) =>
       if (!r.employeeId) continue;
       const checkIn = r.checkInTime ? new Date(r.checkInTime).toLocaleTimeString('en-GB', { hour12: false }) : '-';
       const checkOut = r.checkOutTime ? new Date(r.checkOutTime).toLocaleTimeString('en-GB', { hour12: false }) : '-';
-      csv += `${sanitizeCsvField(r.employeeId.fullName)},${sanitizeCsvField(r.employeeId.employeeNumber)},${sanitizeCsvField(r.period)},${sanitizeCsvField(checkIn)},${sanitizeCsvField(checkOut)},${r.totalMinutes || 0},${r.autoCheckout || false}\n`;
+      csv += `${sanitizeCsvField(r.employeeId.fullName)},${sanitizeCsvField(r.employeeId.employeeNumber)},${sanitizeCsvField(r.date)},${sanitizeCsvField(checkIn)},${sanitizeCsvField(checkOut)},${r.totalMinutes || 0},${r.autoCheckout || false}\n`;
     }
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -269,7 +254,7 @@ router.get('/reports/monthly/export', authenticate, adminOnly, async (req, res) 
       if (!r.employeeId) continue;
       const checkIn = r.checkInTime ? new Date(r.checkInTime).toLocaleTimeString('en-GB', { hour12: false }) : '-';
       const checkOut = r.checkOutTime ? new Date(r.checkOutTime).toLocaleTimeString('en-GB', { hour12: false }) : '-';
-      csv += `${sanitizeCsvField(r.employeeId.fullName)},${sanitizeCsvField(r.employeeId.employeeNumber)},${sanitizeCsvField(r.date)},${sanitizeCsvField(r.period)},${sanitizeCsvField(checkIn)},${sanitizeCsvField(checkOut)},${r.totalMinutes || 0},${r.autoCheckout || false}\n`;
+      csv += `${sanitizeCsvField(r.employeeId.fullName)},${sanitizeCsvField(r.employeeId.employeeNumber)},${sanitizeCsvField(r.date)},${sanitizeCsvField(checkIn)},${sanitizeCsvField(checkOut)},${r.totalMinutes || 0},${r.autoCheckout || false}\n`;
     }
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');

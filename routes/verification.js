@@ -1,25 +1,12 @@
 const express = require('express');
 const crypto = require('crypto');
-const multer = require('multer');
 const Employee = require('../models/Employee');
 const Attendance = require('../models/Attendance');
 const { authenticate } = require('../middleware/auth');
-const { extractDescriptor, compareDescriptors } = require('../utils/faceUtils');
+const { compareDescriptors, validateDescriptor } = require('../utils/faceUtils');
 
 const router = express.Router();
 const SECRET = process.env.JWT_SECRET || 'fallback_secret';
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only image files are allowed'));
-    }
-  },
-});
 
 const usedTokens = new Set();
 
@@ -87,9 +74,9 @@ router.post('/verify-qr', authenticate, async (req, res) => {
   }
 });
 
-router.post('/verify-face', authenticate, upload.single('image'), async (req, res) => {
+router.post('/verify-face', authenticate, async (req, res) => {
   try {
-    const { period, qrToken } = req.body;
+    const { period, qrToken, faceDescriptor } = req.body;
 
     if (!qrToken || !verifyQrToken(qrToken)) {
       return res.status(400).json({ message: 'Invalid or expired QR code' });
@@ -107,8 +94,8 @@ router.post('/verify-face', authenticate, upload.single('image'), async (req, re
       });
     }
 
-    if (!req.file) {
-      return res.status(400).json({ message: 'Image file is required' });
+    if (!faceDescriptor || !validateDescriptor(faceDescriptor)) {
+      return res.status(400).json({ message: 'Valid face descriptor is required' });
     }
 
     const employee = await Employee.findById(req.employee._id).select('+faceDescriptor');
@@ -116,16 +103,11 @@ router.post('/verify-face', authenticate, upload.single('image'), async (req, re
       return res.status(404).json({ message: 'Employee not found' });
     }
 
-    if (!employee.faceDescriptor || employee.faceDescriptor.length !== 128) {
+    if (!employee.faceDescriptor || employee.faceDescriptor.length === 0) {
       return res.status(400).json({ faceNotRegistered: true, message: 'No face registered. Contact admin.' });
     }
 
-    const liveDescriptor = await extractDescriptor(req.file.buffer);
-    if (!liveDescriptor) {
-      return res.status(400).json({ noFaceDetected: true, message: 'No face detected in image' });
-    }
-
-    const { match, distance } = compareDescriptors(employee.faceDescriptor, liveDescriptor, 0.5);
+    const { match, distance } = compareDescriptors(employee.faceDescriptor, faceDescriptor);
     if (!match) {
       return res.status(400).json({ verified: false, distance, message: 'Face does not match' });
     }
@@ -165,24 +147,21 @@ router.post('/verify-face', authenticate, upload.single('image'), async (req, re
   }
 });
 
-router.put('/employees/:id/face', authenticate, upload.single('image'), async (req, res) => {
+router.put('/employees/:id/face', authenticate, async (req, res) => {
   try {
     if (req.employee.role !== 'admin') {
       return res.status(403).json({ message: 'Admin access required' });
     }
 
-    if (!req.file) {
-      return res.status(400).json({ message: 'Image file is required' });
-    }
+    const { faceDescriptor } = req.body;
 
-    const descriptor = await extractDescriptor(req.file.buffer);
-    if (!descriptor) {
-      return res.status(400).json({ noFaceDetected: true, message: 'No face detected in image' });
+    if (!faceDescriptor || !validateDescriptor(faceDescriptor)) {
+      return res.status(400).json({ message: 'Valid face descriptor is required' });
     }
 
     const employee = await Employee.findByIdAndUpdate(
       req.params.id,
-      { faceDescriptor: descriptor, faceRegistered: true },
+      { faceDescriptor, faceRegistered: true },
       { new: true }
     );
 
@@ -190,7 +169,7 @@ router.put('/employees/:id/face', authenticate, upload.single('image'), async (r
       return res.status(404).json({ message: 'Employee not found' });
     }
 
-    res.json({ faceRegistered: true, descriptorSize: descriptor.length });
+    res.json({ faceRegistered: true, descriptorSize: faceDescriptor.length });
   } catch (error) {
     console.error('Register face error:', error);
     res.status(500).json({ message: 'Server error' });

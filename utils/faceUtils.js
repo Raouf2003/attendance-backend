@@ -1,4 +1,4 @@
-function compareDescriptors(d1, d2, threshold = 0.6) {
+function compareDescriptors(d1, d2, threshold = 0.45) {
   if (!d1 || !d2 || !Array.isArray(d1) || !Array.isArray(d2)) {
     return { match: false, distance: Infinity };
   }
@@ -12,6 +12,10 @@ function compareDescriptors(d1, d2, threshold = 0.6) {
   }
   const distance = Math.sqrt(sum);
   return { match: distance <= threshold, distance };
+}
+
+function matchAgainstStored(storedDescriptor, capturedDescriptor, threshold = 0.45) {
+  return compareDescriptors(storedDescriptor, capturedDescriptor, threshold);
 }
 
 function validateDescriptor(descriptor) {

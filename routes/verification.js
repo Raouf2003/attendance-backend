@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const Employee = require('../models/Employee');
 const Attendance = require('../models/Attendance');
 const { authenticate } = require('../middleware/auth');
-const { compareDescriptors, validateDescriptor } = require('../utils/faceUtils');
+const { matchAgainstStored, validateDescriptor } = require('../utils/faceUtils');
 
 const router = express.Router();
 const SECRET = process.env.JWT_SECRET || 'fallback_secret';
@@ -111,9 +111,14 @@ router.post('/verify-face', authenticate, async (req, res) => {
       return res.status(400).json({ faceNotRegistered: true, message: 'No face registered. Contact admin.' });
     }
 
-    const { match, distance } = compareDescriptors(employee.faceDescriptor, faceDescriptor);
+    const { match, distance } = matchAgainstStored(employee.faceDescriptor, faceDescriptor);
     if (!match) {
-      return res.status(400).json({ verified: false, distance, message: 'Face does not match' });
+      console.warn(`SECURITY: Face identity mismatch for employee ${req.employee._id} (${req.employee.fullName}). Distance: ${distance}`);
+      return res.status(403).json({
+        identityMismatch: true,
+        distance,
+        message: 'Face does not belong to this account',
+      });
     }
 
     const now = new Date();

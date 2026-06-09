@@ -1,13 +1,24 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const multer = require('multer');
 const Employee = require('../models/Employee');
 const Attendance = require('../models/Attendance');
 const Report = require('../models/Report');
 const { authenticate, adminOnly } = require('../middleware/auth');
 const { paginate, paginatedResponse } = require('../utils/pagination');
 const { cacheMiddleware, clearCache } = require('../middleware/cache');
+const { extractDescriptor } = require('../utils/faceUtils');
 
 const router = express.Router();
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Only image files are allowed'));
+  },
+});
 
 function formatMinutes(totalMinutes) {
   const h = Math.floor(totalMinutes / 60);
@@ -24,12 +35,21 @@ function sanitizeCsvField(value) {
   return str;
 }
 
-router.post('/employees', authenticate, adminOnly, async (req, res) => {
+router.post('/employees', authenticate, adminOnly, upload.single('image'), async (req, res) => {
   try {
     const { employeeNumber, fullName, password, role } = req.body;
 
     if (!employeeNumber || !fullName || !password) {
       return res.status(400).json({ message: 'All fields are required' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: 'Face photo is required' });
+    }
+
+    const descriptor = await extractDescriptor(req.file.buffer);
+    if (!descriptor) {
+      return res.status(400).json({ noFaceDetected: true, message: 'No face detected in image. Please try again with a clear face photo.' });
     }
 
     const existing = await Employee.findOne({ employeeNumber });
@@ -47,6 +67,8 @@ router.post('/employees', authenticate, adminOnly, async (req, res) => {
       role: role || 'employee',
       isActive: true,
       fingerprintRegistered: false,
+      faceDescriptor: descriptor,
+      faceRegistered: true,
     });
 
     await employee.save();
@@ -54,7 +76,7 @@ router.post('/employees', authenticate, adminOnly, async (req, res) => {
     clearCache();
 
     res.status(201).json({
-      message: 'Employee created',
+      message: 'Employee created with face registered',
       employee: {
         id: employee._id,
         employeeNumber: employee.employeeNumber,
@@ -62,6 +84,7 @@ router.post('/employees', authenticate, adminOnly, async (req, res) => {
         role: employee.role,
         isActive: employee.isActive,
         fingerprintRegistered: false,
+        faceRegistered: true,
       },
     });
   } catch (error) {
@@ -147,7 +170,7 @@ router.get('/employees', authenticate, adminOnly, async (req, res) => {
     const { page, limit } = req.query;
     const total = await Employee.countDocuments({});
     const employees = await paginate(
-      Employee.find({}, { password: 0 }).sort({ createdAt: -1 }),
+      Employee.find({}).select('employeeNumber fullName role isActive faceRegistered fingerprintRegistered createdAt').sort({ createdAt: -1 }),
       page,
       limit
     );

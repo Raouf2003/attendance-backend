@@ -20,7 +20,14 @@ if (_rawSecret && _rawSecret !== 'fallback_secret' && !_rawSecret.startsWith('at
   SECRET = crypto.randomBytes(32).toString('hex');
 }
 
+// Cosine similarity threshold (0.0–1.0). Higher = stricter match.
+// Typical good range: 0.5–0.7. Default 0.55.
+// For Euclidean distance (legacy), use FACE_THRESHOLD env var.
+const COSINE_THRESHOLD = parseFloat(process.env.COSINE_THRESHOLD) || 0.55;
+// Legacy Euclidean threshold — only used if COSINE_THRESHOLD is not set and FACE_THRESHOLD is set
 const FACE_THRESHOLD = parseFloat(process.env.FACE_THRESHOLD) || 0.6;
+// Whether to use cosine similarity (true) or Euclidean distance (false)
+const USE_COSINE = process.env.USE_COSINE !== 'false';
 
 // ─── Short-lived QR session store (employeeId → expiry timestamp) ─────────────
 // Set after a successful /verify-qr; consumed by /verify-checkin
@@ -45,10 +52,6 @@ function validateQrToken(token) {
       .update(`${timeSlot}.${nonce}`)
       .digest('hex');
     if (!crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(expectedHmac))) return false;
-    // Only accept the CURRENT 30-second time-slot (not the previous one).
-    // A QR code is only valid while it's displayed on the admin's screen.
-    // The admin's screen auto-refreshes every 30s, so the QR naturally
-    // expires when the time-slot rolls over.
     const currentSlot = Math.floor(Date.now() / 30000);
     if (timeSlot !== String(currentSlot)) return false;
     return true;
@@ -57,6 +60,22 @@ function validateQrToken(token) {
   }
 }
 
+/**
+ * Cosine similarity between two L2-normalized vectors.
+ * Returns 1.0 for identical, -1.0 for opposite.
+ */
+function cosineSimilarity(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return -1;
+  let dot = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+  }
+  return dot;
+}
+
+/**
+ * Euclidean distance (legacy).
+ */
 function euclideanDistance(a, b) {
   if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return Infinity;
   let sum = 0;
@@ -73,6 +92,9 @@ setInterval(() => {
     if (now > expiry) qrVerifiedSessions.delete(empId);
   }
 }, 2 * 60 * 1000);
+
+console.log(`[verification] Matching: ${USE_COSINE ? 'cosine similarity' : 'Euclidean distance'}, ` +
+  `threshold=${USE_COSINE ? COSINE_THRESHOLD : FACE_THRESHOLD}`);
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
@@ -95,13 +117,6 @@ router.get('/qr-token', authenticate, async (req, res) => {
 /**
  * POST /verify-qr
  * Step 1 of check-in. Employee (authenticated via JWT) submits the scanned QR token.
- * The token is valid for multiple scans within its 30-second time-slot, but
- * automatically expires once the time-slot rolls over (admin's screen refreshes).
- * If valid: creates a 60-second QR-verified session tied to this employee's ID.
- * Returns verified: true so the client can proceed to the face capture step.
- *
- * Security: the session is keyed by employeeId (from JWT), so no other employee
- * can "inherit" this QR verification.
  */
 router.post('/verify-qr', authenticate, async (req, res) => {
   try {
@@ -115,7 +130,6 @@ router.post('/verify-qr', authenticate, async (req, res) => {
       return res.status(400).json({ message: 'Invalid or expired QR code', error: 'invalid_qr' });
     }
 
-    // Record a 60-second window for this employee to complete face verification
     const employeeIdStr = req.employee._id.toString();
     qrVerifiedSessions.set(employeeIdStr, Date.now() + 60_000);
 
@@ -127,18 +141,8 @@ router.post('/verify-qr', authenticate, async (req, res) => {
 
 /**
  * POST /verify-checkin
- * Step 2 of check-in. Employee submits a live face descriptor captured by the
- * front camera. The server:
- *  1. Confirms a valid QR session exists for this employee (from step 1).
- *  2. Loads ONLY that employee's stored faceDescriptor from the database.
- *  3. Computes Euclidean distance between submitted and stored descriptors.
- *  4. If distance < FACE_THRESHOLD → records the attendance check-in.
- *  5. If distance >= FACE_THRESHOLD → rejects with face_mismatch.
- *
- * Security guarantees:
- *  - QR step must precede this call (session check prevents bypass).
- *  - Face is compared ONLY against the JWT-identified employee — no cross-account match.
- *  - No gallery is trusted; face capture is enforced on the client side with no backend loophole.
+ * Step 2 of check-in. Compares face descriptor against all stored enrollment
+ * samples using cosine similarity. Accepts if ANY sample passes the threshold.
  */
 router.post('/verify-checkin', authenticate, async (req, res) => {
   try {
@@ -162,13 +166,13 @@ router.post('/verify-checkin', authenticate, async (req, res) => {
         error: 'invalid_qr',
       });
     }
+
     // ── 3. Load stored face descriptors for this specific employee ────────────
     const employee = await Employee.findById(req.employee._id);
     if (!employee) {
       return res.status(404).json({ message: 'Employee not found' });
     }
 
-    // Support both old single descriptor and new multi-descriptor format
     let storedDescriptors = [];
     if (employee.faceDescriptors && employee.faceDescriptors.length > 0) {
       storedDescriptors = employee.faceDescriptors;
@@ -186,27 +190,52 @@ router.post('/verify-checkin', authenticate, async (req, res) => {
     }
 
     // ── 4. Compare against ALL stored descriptors — accept if ANY match ────────
-    let bestDistance = Infinity;
+    let bestScore = USE_COSINE ? -1 : Infinity;
     let bestIndex = -1;
+    const scores = [];
+
     for (let i = 0; i < storedDescriptors.length; i++) {
-      const d = euclideanDistance(faceDescriptor, storedDescriptors[i]);
-      if (d < bestDistance) {
-        bestDistance = d;
-        bestIndex = i;
+      const score = USE_COSINE
+        ? cosineSimilarity(faceDescriptor, storedDescriptors[i])
+        : -euclideanDistance(faceDescriptor, storedDescriptors[i]); // negate so higher = better
+
+      scores.push(score);
+
+      if (USE_COSINE) {
+        if (score > bestScore) {
+          bestScore = score;
+          bestIndex = i;
+        }
+      } else {
+        if (score > bestScore) {
+          bestScore = score;
+          bestIndex = i;
+        }
       }
     }
 
-    console.log(`[verify] Employee ${employee.employeeNumber}: ${faceDescriptor.length}-d descriptor, ${storedDescriptors.length} stored samples, best distance = ${bestDistance.toFixed(4)}, threshold = ${FACE_THRESHOLD}`);
+    const threshold = USE_COSINE ? COSINE_THRESHOLD : -FACE_THRESHOLD;
 
-    if (bestDistance > FACE_THRESHOLD) {
-      console.log(`[verify] REJECTED: best distance ${bestDistance.toFixed(4)} exceeds threshold ${FACE_THRESHOLD}`);
+    console.log(`[verify] Employee ${employee.employeeNumber}: ${faceDescriptor.length}-d, ` +
+      `${storedDescriptors.length} samples, method=${USE_COSINE ? 'cosine' : 'euclidean'}, ` +
+      `best=${bestScore.toFixed(4)}, ` +
+      `samples=[${scores.map(s => s.toFixed(4)).join(', ')}], ` +
+      `threshold=${threshold.toFixed(4)}`);
+
+    const accepted = USE_COSINE
+      ? bestScore >= threshold
+      : bestScore >= threshold;
+
+    if (!accepted) {
+      console.log(`[verify] REJECTED: best=${bestScore.toFixed(4)} < threshold=${threshold.toFixed(4)}`);
       return res.status(403).json({
         message: 'Face does not match this account',
         error: 'face_mismatch',
       });
     }
 
-    console.log(`[verify] ACCEPTED: best distance ${bestDistance.toFixed(4)} (sample #${bestIndex + 1}) below threshold ${FACE_THRESHOLD}`);
+    console.log(`[verify] ACCEPTED: best=${bestScore.toFixed(4)} (sample #${bestIndex + 1}) ` +
+      `passes threshold=${threshold.toFixed(4)}`);
 
     // ── 5. Both factors verified — perform check-in ────────────────────────────
     qrVerifiedSessions.delete(employeeIdStr);
@@ -219,7 +248,10 @@ router.post('/verify-checkin', authenticate, async (req, res) => {
       message: 'Check-in successful',
       attendance: result.attendance,
       faceVerified: true,
-      matchDistance: parseFloat(bestDistance.toFixed(4)),
+      similarity: USE_COSINE
+        ? parseFloat(bestScore.toFixed(4))
+        : parseFloat((-bestScore).toFixed(4)),
+      matchMethod: USE_COSINE ? 'cosine' : 'euclidean',
     });
   } catch (error) {
     console.error('verify-checkin error:', error);

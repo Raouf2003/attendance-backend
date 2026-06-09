@@ -27,17 +27,59 @@ function sanitizeCsvField(value) {
 
 router.post('/employees', authenticate, adminOnly, async (req, res) => {
   try {
-    const { employeeNumber, fullName, password, role, faceDescriptor } = req.body;
+    const { employeeNumber, fullName, password, role, faceDescriptor, faceDescriptors } = req.body;
+
+    // ── Debug logging ──────────────────────────────────────────────────────────
+    console.log('[create] Received employee data keys:', Object.keys(req.body));
+    console.log('[create] faceDescriptor type:', typeof faceDescriptor, 'value:', Array.isArray(faceDescriptor) ? `array[${faceDescriptor.length}]` : faceDescriptor);
+    console.log('[create] faceDescriptors type:', typeof faceDescriptors, 'value:', Array.isArray(faceDescriptors) ? `array[${faceDescriptors.length}]` : faceDescriptors);
+    if (Array.isArray(faceDescriptors) && faceDescriptors.length > 0) {
+      console.log('[create] faceDescriptors[0] type:', typeof faceDescriptors[0], 'isArray:', Array.isArray(faceDescriptors[0]));
+      if (Array.isArray(faceDescriptors[0])) {
+        console.log('[create] faceDescriptors[0] length:', faceDescriptors[0].length);
+        console.log('[create] faceDescriptors[0] first 3 values:', faceDescriptors[0].slice(0, 3));
+      }
+    }
 
     if (!employeeNumber || !fullName || !password) {
       return res.status(400).json({ message: 'All fields are required' });
     }
 
     // Face enrollment is mandatory for all new employees
-    if (!faceDescriptor || !Array.isArray(faceDescriptor) || faceDescriptor.length < 2) {
+    let descriptors = null;
+
+    // If faceDescriptors is already an array (new format), use it directly
+    // or if it's a single flat array (legacy), wrap it
+    if (Array.isArray(faceDescriptors)) {
+      if (faceDescriptors.length > 0 && Array.isArray(faceDescriptors[0])) {
+        descriptors = faceDescriptors;
+      } else if (faceDescriptors.length > 0 && typeof faceDescriptors[0] === 'number') {
+        descriptors = [faceDescriptors];
+      }
+    }
+
+    // Fallback to singular faceDescriptor (legacy)
+    if (!descriptors && Array.isArray(faceDescriptor)) {
+      if (Array.isArray(faceDescriptor[0])) {
+        descriptors = faceDescriptor;
+      } else {
+        descriptors = [faceDescriptor];
+      }
+    }
+
+    console.log('[create] resolved descriptors:',
+      descriptors ? `array[${descriptors.length}] samples` : 'null');
+
+    if (!descriptors) {
       return res.status(400).json({
         message: 'Face enrollment is required. Please capture the employee face before saving.',
         error: 'missing_face',
+        debug: {
+          hasFaceDescriptors: Array.isArray(faceDescriptors),
+          faceDescriptorsLength: Array.isArray(faceDescriptors) ? faceDescriptors.length : typeof faceDescriptors,
+          hasFaceDescriptor: Array.isArray(faceDescriptor),
+          faceDescriptorLength: Array.isArray(faceDescriptor) ? faceDescriptor.length : typeof faceDescriptor,
+        },
       });
     }
 
@@ -56,7 +98,7 @@ router.post('/employees', authenticate, adminOnly, async (req, res) => {
       role: role || 'employee',
       isActive: true,
       fingerprintRegistered: false,
-      faceDescriptor,
+      faceDescriptors: descriptors,
       faceEnrolled: true,
     });
 
@@ -86,9 +128,14 @@ router.post('/employees', authenticate, adminOnly, async (req, res) => {
  */
 router.post('/employees/enroll-face/:id', authenticate, adminOnly, async (req, res) => {
   try {
-    const { faceDescriptor } = req.body;
+    const { faceDescriptor, faceDescriptors } = req.body;
 
-    if (!faceDescriptor || !Array.isArray(faceDescriptor) || faceDescriptor.length < 2) {
+    const descriptors = faceDescriptors && faceDescriptors.length > 0
+      ? faceDescriptors
+      : (faceDescriptor && Array.isArray(faceDescriptor) && faceDescriptor.length >= 2
+          ? (Array.isArray(faceDescriptor[0]) ? faceDescriptor : [faceDescriptor])
+          : null);
+    if (!descriptors) {
       return res.status(400).json({
         message: 'A valid face descriptor is required',
         error: 'missing_face',
@@ -97,7 +144,7 @@ router.post('/employees/enroll-face/:id', authenticate, adminOnly, async (req, r
 
     const employee = await Employee.findByIdAndUpdate(
       req.params.id,
-      { faceDescriptor, faceEnrolled: true },
+      { faceDescriptors: descriptors, faceEnrolled: true },
       { new: true }
     );
 

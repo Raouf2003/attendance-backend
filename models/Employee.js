@@ -35,7 +35,11 @@ const employeeSchema = new mongoose.Schema({
     default: false,
   },
   faceDescriptor: {
-    type: [Number],
+    type: mongoose.Schema.Types.Mixed,
+    default: null,
+  },
+  faceDescriptors: {
+    type: [[Number]],
     default: [],
   },
   faceEnrolled: {

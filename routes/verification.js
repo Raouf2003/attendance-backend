@@ -172,28 +172,51 @@ router.post('/verify-checkin', authenticate, async (req, res) => {
         error: 'invalid_qr',
       });
     }
-    // ── 3. Load stored face descriptor for this specific employee ──────────────
+    // ── 3. Load stored face descriptors for this specific employee ────────────
     const employee = await Employee.findById(req.employee._id);
     if (!employee) {
       return res.status(404).json({ message: 'Employee not found' });
     }
 
-    if (!employee.faceEnrolled || !employee.faceDescriptor || employee.faceDescriptor.length < 2) {
+    // Support both old single descriptor and new multi-descriptor format
+    let storedDescriptors = [];
+    if (employee.faceDescriptors && employee.faceDescriptors.length > 0) {
+      storedDescriptors = employee.faceDescriptors;
+    } else if (employee.faceDescriptor && Array.isArray(employee.faceDescriptor)) {
+      storedDescriptors = Array.isArray(employee.faceDescriptor[0])
+        ? employee.faceDescriptor
+        : [employee.faceDescriptor];
+    }
+
+    if (!employee.faceEnrolled || storedDescriptors.length === 0) {
       return res.status(403).json({
         message: 'Face not enrolled for this account. Please contact your administrator.',
         error: 'face_not_enrolled',
       });
     }
 
-    // ── 4. Compare descriptors ─────────────────────────────────────────────────
-    const distance = euclideanDistance(faceDescriptor, employee.faceDescriptor);
-    if (distance > FACE_THRESHOLD) {
+    // ── 4. Compare against ALL stored descriptors — accept if ANY match ────────
+    let bestDistance = Infinity;
+    let bestIndex = -1;
+    for (let i = 0; i < storedDescriptors.length; i++) {
+      const d = euclideanDistance(faceDescriptor, storedDescriptors[i]);
+      if (d < bestDistance) {
+        bestDistance = d;
+        bestIndex = i;
+      }
+    }
+
+    console.log(`[verify] Employee ${employee.employeeNumber}: ${faceDescriptor.length}-d descriptor, ${storedDescriptors.length} stored samples, best distance = ${bestDistance.toFixed(4)}, threshold = ${FACE_THRESHOLD}`);
+
+    if (bestDistance > FACE_THRESHOLD) {
+      console.log(`[verify] REJECTED: best distance ${bestDistance.toFixed(4)} exceeds threshold ${FACE_THRESHOLD}`);
       return res.status(403).json({
         message: 'Face does not match this account',
         error: 'face_mismatch',
-        // distance intentionally omitted in production to prevent oracle attacks
       });
     }
+
+    console.log(`[verify] ACCEPTED: best distance ${bestDistance.toFixed(4)} (sample #${bestIndex + 1}) below threshold ${FACE_THRESHOLD}`);
 
     // ── 5. Both factors verified — perform check-in ────────────────────────────
     qrVerifiedSessions.delete(employeeIdStr);
@@ -206,6 +229,7 @@ router.post('/verify-checkin', authenticate, async (req, res) => {
       message: 'Check-in successful',
       attendance: result.attendance,
       faceVerified: true,
+      matchDistance: parseFloat(bestDistance.toFixed(4)),
     });
   } catch (error) {
     console.error('verify-checkin error:', error);

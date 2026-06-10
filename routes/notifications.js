@@ -3,7 +3,7 @@ const Attendance = require('../models/Attendance');
 const Employee = require('../models/Employee');
 const { authenticate } = require('../middleware/auth');
 const { acceptOvertime, cancelOvertime, validDurations } = require('../services/overtimeService');
-const { emitToUser } = require('../services/socketService');
+const { emitToUser, emitToAll } = require('../services/socketService');
 
 const router = express.Router();
 
@@ -53,6 +53,26 @@ router.post('/overtime-response', authenticate, async (req, res) => {
       duration,
       period,
       overtimeScheduledEnd: result.overtimeEnd ? result.overtimeEnd.toISOString() : null,
+    });
+
+    if (duration > 0) {
+      emitToAll('overtime_started', {
+        employeeId: req.employee._id.toString(),
+        employeeName: req.employee.fullName,
+        employeeNumber: req.employee.employeeNumber,
+        attendanceId,
+        period,
+        duration,
+        overtimeScheduledEnd: result.overtimeEnd ? result.overtimeEnd.toISOString() : null,
+      });
+    }
+
+    emitToAll('attendance_updated', {
+      type: 'overtime_response',
+      employeeId: req.employee._id.toString(),
+      employeeName: req.employee.fullName,
+      employeeNumber: req.employee.employeeNumber,
+      period,
     });
 
     res.json({

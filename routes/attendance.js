@@ -4,7 +4,7 @@ const { authenticate } = require('../middleware/auth');
 const { performCheckIn } = require('../utils/attendanceHelper');
 const { validateGeofence } = require('../services/settingsService');
 const { getCurrentPeriod, getSettings } = require('../services/settingsService');
-const { emitToUser } = require('../services/socketService');
+const { emitToUser, emitToAll } = require('../services/socketService');
 
 const router = express.Router();
 
@@ -36,6 +36,13 @@ router.post('/checkin', authenticate, async (req, res) => {
       type: 'checkin',
       period,
       attendanceId: result.attendance.id,
+    });
+    emitToAll('attendance_updated', {
+      type: 'checkin',
+      employeeId: req.employee._id.toString(),
+      employeeName: req.employee.fullName,
+      employeeNumber: req.employee.employeeNumber,
+      period,
     });
 
     res.json({ message: 'Check-in successful', attendance: result.attendance });
@@ -97,6 +104,13 @@ router.post('/checkout', authenticate, async (req, res) => {
       period,
       attendanceId: attendance._id,
       autoCheckout: attendance.autoCheckout,
+    });
+    emitToAll('attendance_updated', {
+      type: 'checkout',
+      employeeId: req.employee._id.toString(),
+      employeeName: req.employee.fullName,
+      employeeNumber: req.employee.employeeNumber,
+      period,
     });
 
     res.json({

@@ -295,6 +295,44 @@ router.get('/employees/active', authenticate, adminOnly, async (req, res) => {
   }
 });
 
+router.get('/admin/live-employees', authenticate, adminOnly, async (req, res) => {
+  try {
+    const now = new Date();
+    const activeRecords = await Attendance.find({
+      checkInTime: { $ne: null },
+      checkOutTime: null,
+    })
+      .populate('employeeId', 'fullName employeeNumber')
+      .sort({ checkInTime: -1 });
+
+    const working = [];
+    const overtime = [];
+
+    for (const r of activeRecords) {
+      if (!r.employeeId) continue;
+      const hasActiveOvertime = r.overtimeScheduledEnd && r.overtimeScheduledEnd > now;
+      const entry = {
+        employeeId: r.employeeId._id,
+        fullName: r.employeeId.fullName,
+        employeeNumber: r.employeeId.employeeNumber,
+        period: r.period,
+        checkInTime: r.checkInTime,
+      };
+      if (hasActiveOvertime) {
+        entry.overtimeScheduledEnd = r.overtimeScheduledEnd;
+        overtime.push(entry);
+      } else {
+        working.push(entry);
+      }
+    }
+
+    res.json({ working, overtime });
+  } catch (error) {
+    console.error('Live employees error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 router.get('/reports/daily', authenticate, adminOnly, cacheMiddleware(), async (req, res) => {
   try {
     const { date, page, limit } = req.query;

@@ -1,6 +1,6 @@
 const cron = require('node-cron');
 const Attendance = require('../models/Attendance');
-const { emitToUser } = require('../services/socketService');
+const { emitToUser, emitToAll } = require('../services/socketService');
 
 async function processOvertimeEnd() {
   try {
@@ -29,6 +29,12 @@ async function processOvertimeEnd() {
       emitToUser(record.employeeId, 'overtime_updated', {
         type: 'overtime_ended',
         attendanceId: record._id,
+        period: record.period,
+        overtimeDurationSelected: duration,
+      });
+      emitToAll('overtime_ended', {
+        employeeId: record.employeeId.toString(),
+        attendanceId: record._id.toString(),
         period: record.period,
         overtimeDurationSelected: duration,
       });

@@ -11,8 +11,10 @@ function getDateKey(date = new Date()) {
 }
 
 function getCurrentPeriod() {
-  const hour = new Date().getHours();
-  if (hour >= 5 && hour < 13) return 'morning';
+  const now = new Date();
+  const totalMin = now.getHours() * 60 + now.getMinutes();
+  // Morning: 05:00-05:59 UTC = 07:00-07:59 local
+  if (totalMin >= 300 && totalMin < 360) return 'morning';
   return 'evening';
 }
 

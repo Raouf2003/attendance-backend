@@ -1,5 +1,8 @@
 const cron = require('node-cron');
 const Attendance = require('../models/Attendance');
+const { getShifts, localTimeToUtcCronTimes } = require('../services/settingsService');
+
+const scheduledTasks = [];
 
 async function autoCheckoutPeriod(period, label) {
   try {
@@ -40,40 +43,48 @@ async function autoCheckoutPeriod(period, label) {
   }
 }
 
-function startAutoCheckoutScheduler() {
-  cron.schedule('0 10 * * 1-5', () => {
-    autoCheckoutPeriod('morning', 'Mon-Fri 10:00 morning');
-  });
-
-  cron.schedule('0 11 * * 1-5', () => {
-    autoCheckoutPeriod('morning', 'Mon-Fri 11:00 morning');
-  });
-
-  cron.schedule('0 14 * * 1-5', () => {
-    autoCheckoutPeriod('evening', 'Mon-Fri 14:00 evening');
-  });
-
-  cron.schedule('0 15 * * 1-5', () => {
-    autoCheckoutPeriod('evening', 'Mon-Fri 15:00 evening');
-  });
-
-  cron.schedule('30 10 * * 0,6', () => {
-    autoCheckoutPeriod('morning', 'Weekend 10:30 morning');
-  });
-
-  cron.schedule('30 11 * * 0,6', () => {
-    autoCheckoutPeriod('morning', 'Weekend 11:30 morning');
-  });
-
-  cron.schedule('0 14 * * 0,6', () => {
-    autoCheckoutPeriod('evening', 'Weekend 14:00 evening');
-  });
-
-  cron.schedule('0 15 * * 0,6', () => {
-    autoCheckoutPeriod('evening', 'Weekend 15:00 evening');
-  });
-
-  console.log('Auto checkout scheduler started (10:00/11:00 morning, 14:00/15:00 evening UTC)');
+function clearAllTasks() {
+  while (scheduledTasks.length > 0) {
+    const task = scheduledTasks.pop();
+    task.stop();
+  }
 }
 
-module.exports = { startAutoCheckoutScheduler };
+function scheduleAutoCheckoutJob(period, cronExpr, label) {
+  const task = cron.schedule(cronExpr, () => {
+    autoCheckoutPeriod(period, label);
+  });
+  scheduledTasks.push(task);
+}
+
+async function rescheduleAutoCheckout() {
+  clearAllTasks();
+
+  const shifts = await getShifts();
+
+  const morningCrons = localTimeToUtcCronTimes(shifts.morningEnd);
+  for (const { hour, minute } of morningCrons) {
+    const wdExpr = `${minute} ${hour} * * 1-5`;
+    const weExpr = `${minute} ${hour + 1 > 23 ? (hour + 1) % 24 : minute} ${hour} * * 0,6`;
+    scheduleAutoCheckoutJob('morning', wdExpr, `weekday ${hour}:${minute} morning`);
+    const weMinute = (minute + 30) % 60;
+    const weHour = minute + 30 >= 60 ? (hour + 1) % 24 : hour;
+    scheduleAutoCheckoutJob('morning', `${weMinute} ${weHour} * * 0,6`, `weekend ${weHour}:${weMinute} morning`);
+  }
+
+  const eveningCrons = localTimeToUtcCronTimes(shifts.eveningEnd);
+  for (const { hour, minute } of eveningCrons) {
+    const wdExpr = `${minute} ${hour} * * 1-5`;
+    const weExpr = `${minute} ${hour} * * 0,6`;
+    scheduleAutoCheckoutJob('evening', wdExpr, `weekday ${hour}:${minute} evening`);
+    scheduleAutoCheckoutJob('evening', weExpr, `weekend ${hour}:${minute} evening`);
+  }
+
+  console.log(`[AutoCheckout] Scheduler set — morning end ${shifts.morningEnd}, evening end ${shifts.eveningEnd}`);
+}
+
+async function startAutoCheckoutScheduler() {
+  await rescheduleAutoCheckout();
+}
+
+module.exports = { startAutoCheckoutScheduler, rescheduleAutoCheckout };

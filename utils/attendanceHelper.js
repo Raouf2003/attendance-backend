@@ -1,30 +1,21 @@
 const Attendance = require('../models/Attendance');
+const { validateCheckInPeriod } = require('../services/settingsService');
 
 function getDateKey(date = new Date()) {
   return date.toISOString().split('T')[0];
 }
 
-/**
- * Performs a check-in for a given employee and period.
- * Accepts optional location data (lat/lng) to store with the record.
- * Returns { success: true, attendance } or { success: false, status, message }.
- */
 async function performCheckIn(employeeId, period, location) {
   if (!period || !['morning', 'evening'].includes(period)) {
     return { success: false, status: 400, message: 'Period must be morning or evening' };
   }
 
   const now = new Date();
-  const hour = now.getHours();
+  const utcMin = now.getUTCHours() * 60 + now.getUTCMinutes();
 
-  if (period === 'morning' && (hour < 6 || hour >= 11)) {
-    return { success: false, status: 400, message: 'Morning check-in allowed between 08:00 and 12:00' };
-  }
-  if (period === 'evening') {
-    const totalMin = hour * 60 + now.getMinutes();
-    if (totalMin < 11 * 60 || totalMin >= 15 * 60) {
-      return { success: false, status: 400, message: 'Evening check-in allowed between 13:00 and 16:00' };
-    }
+  const timeError = await validateCheckInPeriod(period, utcMin);
+  if (timeError) {
+    return { success: false, status: 400, message: timeError };
   }
 
   const dateKey = getDateKey(now);

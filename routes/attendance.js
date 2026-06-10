@@ -3,18 +3,12 @@ const Attendance = require('../models/Attendance');
 const { authenticate } = require('../middleware/auth');
 const { performCheckIn } = require('../utils/attendanceHelper');
 const { validateGeofence } = require('../utils/haversine');
+const { getCurrentPeriod, getShifts } = require('../services/settingsService');
 
 const router = express.Router();
 
 function getDateKey(date = new Date()) {
   return date.toISOString().split('T')[0];
-}
-
-function getCurrentPeriod() {
-  const now = new Date();
-  const totalMin = now.getHours() * 60 + now.getMinutes();
-  if (totalMin >= 6 * 60 && totalMin < 11 * 60) return 'morning';
-  return 'evening';
 }
 
 function getPeriodStatus(record) {
@@ -113,7 +107,8 @@ router.get('/status', authenticate, async (req, res) => {
   try {
     const now = new Date();
     const dateKey = getDateKey(now);
-    const currentPeriod = getCurrentPeriod();
+    const currentPeriod = await getCurrentPeriod();
+    const shifts = await getShifts();
 
     const records = await Attendance.find({
       employeeId: req.employee._id,
@@ -139,6 +134,12 @@ router.get('/status', authenticate, async (req, res) => {
         overtimeScheduledEnd: activeOvertime.overtimeScheduledEnd,
         overtimeDurationSelected: activeOvertime.overtimeDurationSelected,
       } : null,
+      shifts: {
+        morningStart: shifts.morningStart,
+        morningEnd: shifts.morningEnd,
+        eveningStart: shifts.eveningStart,
+        eveningEnd: shifts.eveningEnd,
+      },
       employee: {
         id: req.employee._id,
         fullName: req.employee.fullName,

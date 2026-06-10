@@ -14,6 +14,7 @@ const adminRoutes = require('./routes/admin');
 const employeeReportsRoutes = require('./routes/employeeReports');
 const verificationRoutes = require('./routes/verification');
 const notificationRoutes = require('./routes/notifications');
+const settingsRoutes = require('./routes/settings');
 const { startAutoCheckoutScheduler } = require('./scheduler/autoCheckout');
 const { startShiftEndScheduler } = require('./scheduler/shiftEnd');
 const { startOvertimeEndScheduler } = require('./scheduler/overtimeEnd');
@@ -58,6 +59,7 @@ app.use('/api', adminRoutes);
 app.use('/api', employeeReportsRoutes);
 app.use('/api', verificationRoutes);
 app.use('/api', notificationRoutes);
+app.use('/api', settingsRoutes);
 
 app.get('/api/health', async (req, res) => {
   const dbState = mongoose.connection.readyState;

@@ -1,7 +1,10 @@
 const cron = require('node-cron');
 const Attendance = require('../models/Attendance');
 const Employee = require('../models/Employee');
-const { sendMulticastPushNotification, isFcmEnabled } = require('../services/firebase');
+const { sendMulticastPushNotification } = require('../services/firebase');
+const { getShifts, localTimeToUtcCronTimes, localToUtcMinutes } = require('../services/settingsService');
+
+const scheduledTasks = [];
 
 async function processShiftEnd(period, label) {
   try {
@@ -64,26 +67,44 @@ async function processShiftEnd(period, label) {
   }
 }
 
-function startShiftEndScheduler() {
-  // Morning ends at 12:00 local → 10:00 UTC (UTC+2) / 11:00 UTC (UTC+1)
-  cron.schedule('0 10 * * *', () => {
-    processShiftEnd('morning', '10:00 UTC morning');
-  });
-
-  cron.schedule('0 11 * * *', () => {
-    processShiftEnd('morning', '11:00 UTC morning');
-  });
-
-  // Evening ends at 16:00 local → 14:00 UTC (UTC+2) / 15:00 UTC (UTC+1)
-  cron.schedule('0 14 * * *', () => {
-    processShiftEnd('evening', '14:00 UTC evening');
-  });
-
-  cron.schedule('0 15 * * *', () => {
-    processShiftEnd('evening', '15:00 UTC evening');
-  });
-
-  console.log('[ShiftEnd] Scheduler started (10:00/11:00 UTC morning, 14:00/15:00 UTC evening)');
+function clearAllTasks() {
+  while (scheduledTasks.length > 0) {
+    const task = scheduledTasks.pop();
+    task.stop();
+  }
 }
 
-module.exports = { startShiftEndScheduler };
+function scheduleShiftEndJob(period, cronExpr, label) {
+  const task = cron.schedule(cronExpr, () => {
+    processShiftEnd(period, label);
+  });
+  scheduledTasks.push(task);
+}
+
+async function rescheduleShiftEnd() {
+  clearAllTasks();
+
+  const shifts = await getShifts();
+
+  const morningCrons = localTimeToUtcCronTimes(shifts.morningEnd);
+  for (const { hour, minute } of morningCrons) {
+    const expr = `${minute} ${hour} * * *`;
+    scheduleShiftEndJob('morning', expr, `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} UTC morning`);
+    console.log(`[ShiftEnd] Scheduled morning at ${expr} (${shifts.morningEnd} local)`);
+  }
+
+  const eveningCrons = localTimeToUtcCronTimes(shifts.eveningEnd);
+  for (const { hour, minute } of eveningCrons) {
+    const expr = `${minute} ${hour} * * *`;
+    scheduleShiftEndJob('evening', expr, `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} UTC evening`);
+    console.log(`[ShiftEnd] Scheduled evening at ${expr} (${shifts.eveningEnd} local)`);
+  }
+
+  console.log(`[ShiftEnd] Scheduler set — morning end ${shifts.morningEnd}, evening end ${shifts.eveningEnd}`);
+}
+
+async function startShiftEndScheduler() {
+  await rescheduleShiftEnd();
+}
+
+module.exports = { startShiftEndScheduler, rescheduleShiftEnd };

@@ -123,10 +123,22 @@ router.get('/status', authenticate, async (req, res) => {
     const morning = records.find(r => r.period === 'morning') || null;
     const evening = records.find(r => r.period === 'evening') || null;
 
+    const activeOvertime = await Attendance.findOne({
+      employeeId: req.employee._id,
+      overtimeScheduledEnd: { $ne: null },
+      checkOutTime: null,
+    });
+
     res.json({
       currentPeriod,
       morning: { status: getPeriodStatus(morning), attendance: morning },
       evening: { status: getPeriodStatus(evening), attendance: evening },
+      activeOvertime: activeOvertime ? {
+        id: activeOvertime._id,
+        period: activeOvertime.period,
+        overtimeScheduledEnd: activeOvertime.overtimeScheduledEnd,
+        overtimeDurationSelected: activeOvertime.overtimeDurationSelected,
+      } : null,
       employee: {
         id: req.employee._id,
         fullName: req.employee.fullName,

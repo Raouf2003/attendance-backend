@@ -16,6 +16,7 @@ const verificationRoutes = require('./routes/verification');
 const notificationRoutes = require('./routes/notifications');
 const { startAutoCheckoutScheduler } = require('./scheduler/autoCheckout');
 const { startShiftEndScheduler } = require('./scheduler/shiftEnd');
+const { startOvertimeEndScheduler } = require('./scheduler/overtimeEnd');
 const { initFirebase } = require('./services/firebase');
 const Employee = require('./models/Employee');
 
@@ -111,6 +112,7 @@ mongoose.connect(MONGODB_URI, {
   initFirebase();
   startAutoCheckoutScheduler();
   startShiftEndScheduler();
+  startOvertimeEndScheduler();
 
   server = app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);

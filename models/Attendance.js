@@ -61,6 +61,10 @@ const attendanceSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  overtimeScheduledEnd: {
+    type: Date,
+    default: null,
+  },
 }, { timestamps: true });
 
 attendanceSchema.index({ employeeId: 1, date: 1, period: 1 }, { unique: true });

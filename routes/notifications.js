@@ -63,19 +63,7 @@ router.post('/overtime-response', authenticate, async (req, res) => {
 
     if (duration > 0) {
       const now = new Date();
-      attendance.checkOutTime = now;
-      const totalMinutes = Math.round((now - attendance.checkInTime) / 60000);
-      attendance.totalMinutes = totalMinutes;
-      attendance.normalHours = attendance.totalMinutes;
-      attendance.overtimeHours = duration;
-      attendance.totalMinutes += duration * 60;
-    } else {
-      const now = new Date();
-      attendance.checkOutTime = now;
-      const totalMinutes = Math.round((now - attendance.checkInTime) / 60000);
-      attendance.totalMinutes = totalMinutes;
-      attendance.normalHours = totalMinutes;
-      attendance.overtimeHours = 0;
+      attendance.overtimeScheduledEnd = new Date(now.getTime() + duration * 60 * 60 * 1000);
     }
 
     await attendance.save();
@@ -83,17 +71,17 @@ router.post('/overtime-response', authenticate, async (req, res) => {
     res.json({
       message: duration > 0
         ? `Overtime of ${duration}h accepted`
-        : 'Overtime declined, session closed',
+        : 'Overtime declined',
+      needsCheckout: duration === 0,
+      overtimeEnd: duration > 0 ? attendance.overtimeScheduledEnd.toISOString() : null,
       attendance: {
         id: attendance._id,
         period: attendance.period,
         checkInTime: attendance.checkInTime,
         checkOutTime: attendance.checkOutTime,
-        totalMinutes: attendance.totalMinutes,
-        normalHours: attendance.normalHours,
-        overtimeHours: attendance.overtimeHours,
         overtimeRequested: attendance.overtimeRequested,
         overtimeDurationSelected: attendance.overtimeDurationSelected,
+        overtimeScheduledEnd: attendance.overtimeScheduledEnd,
       },
     });
   } catch (err) {

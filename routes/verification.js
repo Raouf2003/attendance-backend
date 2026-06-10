@@ -275,4 +275,84 @@ router.post('/verify-checkin', authenticate, async (req, res) => {
   }
 });
 
+/**
+ * POST /verify-face
+ * Face-only identity verification (used for check-out, etc.).
+ * No QR session or geofence check required.
+ */
+router.post('/verify-face', authenticate, async (req, res) => {
+  try {
+    const { faceDescriptor } = req.body;
+
+    if (!faceDescriptor || !Array.isArray(faceDescriptor) || faceDescriptor.length === 0) {
+      return res.status(400).json({
+        message: 'Face data is required',
+        error: 'missing_face',
+      });
+    }
+
+    const employee = await Employee.findById(req.employee._id);
+    if (!employee) {
+      return res.status(404).json({ message: 'Employee not found' });
+    }
+
+    let storedDescriptors = [];
+    if (employee.faceDescriptors && employee.faceDescriptors.length > 0) {
+      storedDescriptors = employee.faceDescriptors;
+    } else if (employee.faceDescriptor && Array.isArray(employee.faceDescriptor)) {
+      storedDescriptors = Array.isArray(employee.faceDescriptor[0])
+        ? employee.faceDescriptor
+        : [employee.faceDescriptor];
+    }
+
+    if (!employee.faceEnrolled || storedDescriptors.length === 0) {
+      return res.status(403).json({
+        message: 'Face not enrolled for this account. Please contact your administrator.',
+        error: 'face_not_enrolled',
+      });
+    }
+
+    let bestScore = USE_COSINE ? -1 : Infinity;
+    let bestIndex = -1;
+    const scores = [];
+
+    for (let i = 0; i < storedDescriptors.length; i++) {
+      const score = USE_COSINE
+        ? cosineSimilarity(faceDescriptor, storedDescriptors[i])
+        : -euclideanDistance(faceDescriptor, storedDescriptors[i]);
+
+      scores.push(score);
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestIndex = i;
+      }
+    }
+
+    const threshold = USE_COSINE ? COSINE_THRESHOLD : -FACE_THRESHOLD;
+    const accepted = bestScore >= threshold;
+
+    if (!accepted) {
+      console.log(`[verify-face] REJECTED: employee=${employee.employeeNumber}, best=${bestScore.toFixed(4)} < threshold=${threshold.toFixed(4)}`);
+      return res.status(403).json({
+        message: 'Face does not match this account',
+        error: 'face_mismatch',
+      });
+    }
+
+    console.log(`[verify-face] ACCEPTED: employee=${employee.employeeNumber}, best=${bestScore.toFixed(4)} (sample #${bestIndex + 1})`);
+
+    return res.json({
+      faceVerified: true,
+      similarity: USE_COSINE
+        ? parseFloat(bestScore.toFixed(4))
+        : parseFloat((-bestScore).toFixed(4)),
+      matchMethod: USE_COSINE ? 'cosine' : 'euclidean',
+    });
+  } catch (error) {
+    console.error('verify-face error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 module.exports = router;

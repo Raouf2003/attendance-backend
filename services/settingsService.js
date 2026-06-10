@@ -35,11 +35,13 @@ function utcMinInRange(utcMin, localStart, localEnd) {
   const utcStarts = localToUtcMinutes(localStart);
   const utcEnds = localToUtcMinutes(localEnd);
   for (let i = 0; i < utcStarts.length; i++) {
-    let start = utcStarts[i];
+    const start = utcStarts[i];
     let end = utcEnds[i];
-    if (end <= start) end += 1440;
-    const testMin = (end > utcStarts[i] + 1400) ? utcMin : utcMin + 1440;
-    if (testMin >= start && testMin < end) return true;
+    if (start <= end) {
+      if (utcMin >= start && utcMin < end) return true;
+    } else {
+      if (utcMin >= start || utcMin < end) return true;
+    }
   }
   return false;
 }

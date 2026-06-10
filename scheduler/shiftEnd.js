@@ -10,10 +10,14 @@ async function notifyShiftEnd(period, label) {
       return;
     }
 
-    const dateKey = new Date().toISOString().split('T')[0];
+    const today = new Date();
+    const dateKey = today.toISOString().split('T')[0];
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayKey = yesterday.toISOString().split('T')[0];
 
     const activeRecords = await Attendance.find({
-      date: dateKey,
+      date: { $in: [dateKey, yesterdayKey] },
       period,
       checkInTime: { $ne: null },
       checkOutTime: null,
@@ -58,11 +62,11 @@ function startShiftEndScheduler() {
     notifyShiftEnd('morning', '12:00 morning shift end');
   });
 
-  cron.schedule('24 3 * * *', () => {
+  cron.schedule('24 1 * * *', () => {
     notifyShiftEnd('evening', '03:24 evening shift end');
   });
 
-  console.log('[ShiftEnd] Scheduler started (12:00 morning, 03:24 evening)');
+  console.log('[ShiftEnd] Scheduler started (12:00 morning, 03:24 evening [01:24 UTC])');
 }
 
 module.exports = { startShiftEndScheduler };

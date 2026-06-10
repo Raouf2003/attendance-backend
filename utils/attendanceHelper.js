@@ -23,7 +23,7 @@ async function performCheckIn(employeeId, period, location) {
   if (period === 'evening') {
     const totalMin = hour * 60 + now.getMinutes();
     const startMin = 11 * 60;       // 11:00 UTC = 13:00 local (UTC+2)
-    const endMin = 3 * 60;          // 03:00 UTC = 05:00 local (UTC+2) / 04:00 local (UTC+1)
+    const endMin = 4 * 60;          // 04:00 UTC = 05:00 local (UTC+1) / 06:00 local (UTC+2)
     const isAllowed = (totalMin >= startMin) || (totalMin <= endMin);
     if (!isAllowed) {
       return { success: false, status: 400, message: 'Evening check-in allowed between 13:00 and 05:00' };

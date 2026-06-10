@@ -2,6 +2,7 @@ const express = require('express');
 const Attendance = require('../models/Attendance');
 const Employee = require('../models/Employee');
 const { authenticate } = require('../middleware/auth');
+const { acceptOvertime, cancelOvertime, validDurations } = require('../services/overtimeService');
 
 const router = express.Router();
 
@@ -34,58 +35,75 @@ router.post('/fcm-token', authenticate, async (req, res) => {
 
 router.post('/overtime-response', authenticate, async (req, res) => {
   try {
-    const { attendanceId, duration } = req.body;
+    const { attendanceId, duration, period } = req.body;
 
     if (!attendanceId) {
       return res.status(400).json({ message: 'attendanceId is required' });
     }
 
-    const validDurations = [0, 1, 2, 3];
-    if (!validDurations.includes(duration)) {
-      return res.status(400).json({ message: 'Duration must be 0, 1, 2, or 3' });
+    const result = await acceptOvertime(attendanceId, req.employee._id, duration, period);
+    if (!result.success) {
+      return res.status(result.status).json({ message: result.message });
     }
-
-    const attendance = await Attendance.findById(attendanceId);
-    if (!attendance) {
-      return res.status(404).json({ message: 'Attendance record not found' });
-    }
-
-    if (attendance.employeeId.toString() !== req.employee._id.toString()) {
-      return res.status(403).json({ message: 'Not authorized' });
-    }
-
-    if (attendance.overtimeResponseAt) {
-      return res.status(400).json({ message: 'Overtime response already recorded' });
-    }
-
-    attendance.overtimeDurationSelected = duration;
-    attendance.overtimeResponseAt = new Date();
-
-    if (duration > 0) {
-      const now = new Date();
-      attendance.overtimeScheduledEnd = new Date(now.getTime() + duration * 60 * 60 * 1000);
-    }
-
-    await attendance.save();
 
     res.json({
       message: duration > 0
         ? `Overtime of ${duration}h accepted`
         : 'Overtime declined',
-      needsCheckout: duration === 0,
-      overtimeEnd: duration > 0 ? attendance.overtimeScheduledEnd.toISOString() : null,
+      needsCheckout: result.needsCheckout,
+      overtimeEnd: result.overtimeEnd ? result.overtimeEnd.toISOString() : null,
       attendance: {
-        id: attendance._id,
-        period: attendance.period,
-        checkInTime: attendance.checkInTime,
-        checkOutTime: attendance.checkOutTime,
-        overtimeRequested: attendance.overtimeRequested,
-        overtimeDurationSelected: attendance.overtimeDurationSelected,
-        overtimeScheduledEnd: attendance.overtimeScheduledEnd,
+        id: result.attendance._id,
+        period: result.attendance.period,
+        checkInTime: result.attendance.checkInTime,
+        checkOutTime: result.attendance.checkOutTime,
+        overtimeRequested: result.attendance.overtimeRequested,
+        overtimeDurationSelected: result.attendance.overtimeDurationSelected,
+        overtimeScheduledEnd: result.attendance.overtimeScheduledEnd,
       },
     });
   } catch (err) {
     console.error('[Overtime] Response error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+router.post('/overtime-cancel', authenticate, async (req, res) => {
+  try {
+    const { attendanceId } = req.body;
+    if (!attendanceId) {
+      return res.status(400).json({ message: 'attendanceId is required' });
+    }
+
+    const result = await cancelOvertime(attendanceId, req.employee._id);
+    if (!result.success) {
+      return res.status(result.status).json({ message: result.message });
+    }
+
+    res.json({
+      message: 'Overtime cancelled, session closed',
+      attendance: {
+        id: result.attendance._id,
+        checkOutTime: result.attendance.checkOutTime,
+        totalMinutes: result.attendance.totalMinutes,
+        normalHours: result.attendance.normalHours,
+        overtimeHours: result.attendance.overtimeHours,
+      },
+    });
+  } catch (err) {
+    console.error('[Overtime] Cancel error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+router.get('/overtime-options', authenticate, async (req, res) => {
+  try {
+    const { period } = req.query;
+    if (!period || !['morning', 'evening'].includes(period)) {
+      return res.status(400).json({ message: 'Period must be morning or evening' });
+    }
+    res.json({ period, durations: validDurations(period) });
+  } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
 });

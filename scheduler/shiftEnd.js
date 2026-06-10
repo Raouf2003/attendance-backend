@@ -3,13 +3,8 @@ const Attendance = require('../models/Attendance');
 const Employee = require('../models/Employee');
 const { sendMulticastPushNotification, isFcmEnabled } = require('../services/firebase');
 
-async function notifyShiftEnd(period, label) {
+async function processShiftEnd(period, label) {
   try {
-    if (!isFcmEnabled()) {
-      console.log(`[ShiftEnd] FCM not configured — skipping ${label}`);
-      return;
-    }
-
     const today = new Date();
     const dateKey = today.toISOString().split('T')[0];
     const yesterday = new Date(today);
@@ -30,28 +25,40 @@ async function notifyShiftEnd(period, label) {
     }
 
     for (const record of activeRecords) {
+      const now = new Date();
+      const totalMinutes = Math.round((now - record.checkInTime) / 60000);
+
+      record.checkOutTime = now;
+      record.totalMinutes = totalMinutes;
+      record.normalHours = totalMinutes;
+      record.autoCheckout = true;
+      record.checkoutType = 'auto';
+
       const employee = await Employee.findById(record.employeeId);
-      if (!employee || !employee.fcmTokens || employee.fcmTokens.length === 0) continue;
+      if (employee && employee.fcmTokens && employee.fcmTokens.length > 0) {
+        record.overtimeRequested = true;
+        await record.save();
 
-      const result = await sendMulticastPushNotification(
-        employee.fcmTokens,
-        'Shift Ended',
-        'Do you want to add overtime?',
-        {
-          type: 'overtime_request',
-          attendanceId: record._id.toString(),
-          period,
-          date: dateKey,
-        },
-      );
+        const result = await sendMulticastPushNotification(
+          employee.fcmTokens,
+          'Shift Ended',
+          'Your shift has ended. Tap to choose overtime.',
+          {
+            type: 'overtime_request',
+            attendanceId: record._id.toString(),
+            period,
+            date: dateKey,
+          },
+        );
 
-      record.overtimeRequested = true;
-      await record.save();
-
-      console.log(`[ShiftEnd] Notified ${employee.employeeNumber} (${label}): ${result.success} sent, ${result.failure} failed`);
+        console.log(`[ShiftEnd] Notified ${employee.employeeNumber} (${label}): ${result.success} sent, ${result.failure} failed`);
+      } else {
+        await record.save();
+        console.log(`[ShiftEnd] Auto-checkout ${record.employeeId} (${label}): no FCM tokens`);
+      }
     }
 
-    console.log(`[ShiftEnd] ${label} — notified ${activeRecords.length} employees`);
+    console.log(`[ShiftEnd] ${label} — processed ${activeRecords.length} employees`);
   } catch (err) {
     console.error(`[ShiftEnd] Error (${label}):`, err.message);
   }
@@ -59,14 +66,14 @@ async function notifyShiftEnd(period, label) {
 
 function startShiftEndScheduler() {
   cron.schedule('0 12 * * *', () => {
-    notifyShiftEnd('morning', '12:00 morning shift end');
+    processShiftEnd('morning', '12:00 morning shift end');
   });
 
-  cron.schedule('0 4 * * *', () => {
-    notifyShiftEnd('evening', '05:00 evening shift end');
+  cron.schedule('0 16 * * *', () => {
+    processShiftEnd('evening', '16:00 evening shift end');
   });
 
-  console.log('[ShiftEnd] Scheduler started (12:00 morning, 05:00 evening [04:00 UTC])');
+  console.log('[ShiftEnd] Scheduler started (12:00 morning, 16:00 evening)');
 }
 
 module.exports = { startShiftEndScheduler };

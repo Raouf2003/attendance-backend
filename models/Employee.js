@@ -46,6 +46,10 @@ const employeeSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  fcmTokens: {
+    type: [String],
+    default: [],
+  },
 }, { timestamps: true });
 
 employeeSchema.index({ role: 1 });

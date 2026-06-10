@@ -13,7 +13,10 @@ const attendanceRoutes = require('./routes/attendance');
 const adminRoutes = require('./routes/admin');
 const employeeReportsRoutes = require('./routes/employeeReports');
 const verificationRoutes = require('./routes/verification');
+const notificationRoutes = require('./routes/notifications');
 const { startAutoCheckoutScheduler } = require('./scheduler/autoCheckout');
+const { startShiftEndScheduler } = require('./scheduler/shiftEnd');
+const { initFirebase } = require('./services/firebase');
 const Employee = require('./models/Employee');
 
 const app = express();
@@ -53,6 +56,7 @@ app.use('/api', attendanceRoutes);
 app.use('/api', adminRoutes);
 app.use('/api', employeeReportsRoutes);
 app.use('/api', verificationRoutes);
+app.use('/api', notificationRoutes);
 
 app.get('/api/health', async (req, res) => {
   const dbState = mongoose.connection.readyState;
@@ -104,7 +108,9 @@ mongoose.connect(MONGODB_URI, {
     console.log(`Default admin created: ADMIN001 (password from DEFAULT_ADMIN_PASSWORD env var)`);
   }
 
+  initFirebase();
   startAutoCheckoutScheduler();
+  startShiftEndScheduler();
 
   server = app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);

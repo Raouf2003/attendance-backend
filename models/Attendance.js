@@ -40,6 +40,27 @@ const attendanceSchema = new mongoose.Schema({
     lat: { type: Number },
     lng: { type: Number },
   },
+  // ── Overtime fields ──────────────────────────────────────────────────────────
+  normalHours: {
+    type: Number,
+    default: 0,
+  },
+  overtimeHours: {
+    type: Number,
+    default: 0,
+  },
+  overtimeRequested: {
+    type: Boolean,
+    default: false,
+  },
+  overtimeDurationSelected: {
+    type: Number,
+    default: 0,
+  },
+  overtimeResponseAt: {
+    type: Date,
+    default: null,
+  },
 }, { timestamps: true });
 
 attendanceSchema.index({ employeeId: 1, date: 1, period: 1 }, { unique: true });

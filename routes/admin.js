@@ -260,6 +260,32 @@ router.get('/employees', authenticate, adminOnly, async (req, res) => {
   }
 });
 
+router.get('/employees/active', authenticate, adminOnly, async (req, res) => {
+  try {
+    const activeRecords = await Attendance.find({
+      checkInTime: { $ne: null },
+      checkOutTime: null,
+    })
+      .populate('employeeId', 'fullName employeeNumber')
+      .sort({ checkInTime: -1 });
+
+    const active = activeRecords
+      .filter(r => r.employeeId)
+      .map(r => ({
+        employeeId: r.employeeId._id,
+        fullName: r.employeeId.fullName,
+        employeeNumber: r.employeeId.employeeNumber,
+        period: r.period,
+        checkInTime: r.checkInTime,
+      }));
+
+    res.json({ active, count: active.length });
+  } catch (error) {
+    console.error('Active employees error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 router.get('/reports/daily', authenticate, adminOnly, cacheMiddleware(), async (req, res) => {
   try {
     const { date, page, limit } = req.query;

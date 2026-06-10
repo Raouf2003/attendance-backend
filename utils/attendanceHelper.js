@@ -17,16 +17,13 @@ async function performCheckIn(employeeId, period, location) {
   const now = new Date();
   const hour = now.getHours();
 
-  if (period === 'morning' && (hour < 7 || hour >= 8)) {
-    return { success: false, status: 400, message: 'Morning check-in allowed between 07:00 and 07:59' };
+  if (period === 'morning' && (hour < 6 || hour >= 11)) {
+    return { success: false, status: 400, message: 'Morning check-in allowed between 08:00 and 12:00' };
   }
   if (period === 'evening') {
     const totalMin = hour * 60 + now.getMinutes();
-    const startMin = 11 * 60;       // 11:00 UTC = 13:00 local (UTC+2)
-    const endMin = 4 * 60;          // 04:00 UTC = 05:00 local (UTC+1) / 06:00 local (UTC+2)
-    const isAllowed = (totalMin >= startMin) || (totalMin <= endMin);
-    if (!isAllowed) {
-      return { success: false, status: 400, message: 'Evening check-in allowed between 13:00 and 05:00' };
+    if (totalMin < 11 * 60 || totalMin >= 15 * 60) {
+      return { success: false, status: 400, message: 'Evening check-in allowed between 13:00 and 16:00' };
     }
   }
 

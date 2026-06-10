@@ -13,7 +13,7 @@ function getDateKey(date = new Date()) {
 function getCurrentPeriod() {
   const now = new Date();
   const totalMin = now.getHours() * 60 + now.getMinutes();
-  if (totalMin >= 300 && totalMin < 360) return 'morning';
+  if (totalMin >= 6 * 60 && totalMin < 11 * 60) return 'morning';
   return 'evening';
 }
 

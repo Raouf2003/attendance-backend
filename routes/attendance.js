@@ -4,6 +4,7 @@ const { authenticate } = require('../middleware/auth');
 const { performCheckIn } = require('../utils/attendanceHelper');
 const { validateGeofence } = require('../services/settingsService');
 const { getCurrentPeriod, getSettings } = require('../services/settingsService');
+const { emitToUser } = require('../services/socketService');
 
 const router = express.Router();
 
@@ -31,6 +32,12 @@ router.post('/checkin', authenticate, async (req, res) => {
     if (!result.success) {
       return res.status(result.status).json({ message: result.message });
     }
+    emitToUser(req.employee._id, 'attendance_updated', {
+      type: 'checkin',
+      period,
+      attendanceId: result.attendance.id,
+    });
+
     res.json({ message: 'Check-in successful', attendance: result.attendance });
   } catch (error) {
     console.error('Check-in error:', error);
@@ -84,6 +91,13 @@ router.post('/checkout', authenticate, async (req, res) => {
       }
     }
     await attendance.save();
+
+    emitToUser(req.employee._id, 'attendance_updated', {
+      type: 'checkout',
+      period,
+      attendanceId: attendance._id,
+      autoCheckout: attendance.autoCheckout,
+    });
 
     res.json({
       message: 'Check-out successful',
@@ -156,6 +170,54 @@ router.get('/status', authenticate, async (req, res) => {
     });
   } catch (error) {
     console.error('Status error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+router.get('/attendance/current-state', authenticate, async (req, res) => {
+  try {
+    const now = new Date();
+    const dateKey = getDateKey(now);
+    const currentPeriod = await getCurrentPeriod();
+    const settings = await getSettings();
+
+    const records = await Attendance.find({
+      employeeId: req.employee._id,
+      date: dateKey,
+    });
+
+    const morning = records.find(r => r.period === 'morning') || null;
+    const evening = records.find(r => r.period === 'evening') || null;
+
+    const activeOvertime = await Attendance.findOne({
+      employeeId: req.employee._id,
+      overtimeScheduledEnd: { $ne: null },
+      checkOutTime: null,
+    });
+
+    res.json({
+      currentPeriod,
+      morning: { status: getPeriodStatus(morning), attendance: morning },
+      evening: { status: getPeriodStatus(evening), attendance: evening },
+      activeOvertime: activeOvertime ? {
+        id: activeOvertime._id,
+        period: activeOvertime.period,
+        overtimeScheduledEnd: activeOvertime.overtimeScheduledEnd,
+        overtimeDurationSelected: activeOvertime.overtimeDurationSelected,
+      } : null,
+      shifts: {
+        morningStart: settings.morningStart,
+        morningEnd: settings.morningEnd,
+        eveningStart: settings.eveningStart,
+        eveningEnd: settings.eveningEnd,
+      },
+      geofence: {
+        companyLocation: settings.companyLocation,
+        allowedRadius: settings.allowedRadius,
+      },
+    });
+  } catch (error) {
+    console.error('Current state error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

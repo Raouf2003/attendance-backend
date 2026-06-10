@@ -3,6 +3,7 @@ const Attendance = require('../models/Attendance');
 const Employee = require('../models/Employee');
 const { sendMulticastPushNotification } = require('../services/firebase');
 const { getSettings, localTimeToUtcCronTimes } = require('../services/settingsService');
+const { emitToUser } = require('../services/socketService');
 
 const scheduledTasks = [];
 
@@ -53,6 +54,13 @@ async function processShiftEnd(period, label) {
             date: dateKey,
           },
         );
+
+        emitToUser(record.employeeId, 'overtime_updated', {
+          type: 'shift_ended',
+          attendanceId: record._id.toString(),
+          period,
+          overtimeRequested: true,
+        });
 
         console.log(`[ShiftEnd] Notified ${employee.employeeNumber} (${label}): ${result.success} sent, ${result.failure} failed`);
       } else {

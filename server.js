@@ -19,6 +19,7 @@ const { startAutoCheckoutScheduler } = require('./scheduler/autoCheckout');
 const { startShiftEndScheduler } = require('./scheduler/shiftEnd');
 const { startOvertimeEndScheduler } = require('./scheduler/overtimeEnd');
 const { initFirebase } = require('./services/firebase');
+const { initSocketIO } = require('./services/socketService');
 const Employee = require('./models/Employee');
 
 const app = express();
@@ -117,6 +118,7 @@ mongoose.connect(MONGODB_URI, {
   startOvertimeEndScheduler();
 
   server = app.listen(PORT, () => {
+    initSocketIO(server);
     console.log(`Server running on port ${PORT}`);
 
     const keepAliveUrl = process.env.KEEPALIVE_URL;

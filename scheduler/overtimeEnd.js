@@ -1,5 +1,6 @@
 const cron = require('node-cron');
 const Attendance = require('../models/Attendance');
+const { emitToUser } = require('../services/socketService');
 
 async function processOvertimeEnd() {
   try {
@@ -24,6 +25,13 @@ async function processOvertimeEnd() {
       record.autoCheckout = true;
       record.checkoutType = 'auto';
       await record.save();
+
+      emitToUser(record.employeeId, 'overtime_updated', {
+        type: 'overtime_ended',
+        attendanceId: record._id,
+        period: record.period,
+        overtimeDurationSelected: duration,
+      });
 
       console.log(`[OvertimeEnd] Auto-checkout employee ${record.employeeId}: ${duration}h overtime, ${totalMinutes}min total`);
     }

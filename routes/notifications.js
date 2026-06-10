@@ -3,6 +3,7 @@ const Attendance = require('../models/Attendance');
 const Employee = require('../models/Employee');
 const { authenticate } = require('../middleware/auth');
 const { acceptOvertime, cancelOvertime, validDurations } = require('../services/overtimeService');
+const { emitToUser } = require('../services/socketService');
 
 const router = express.Router();
 
@@ -46,6 +47,14 @@ router.post('/overtime-response', authenticate, async (req, res) => {
       return res.status(result.status).json({ message: result.message });
     }
 
+    emitToUser(req.employee._id, 'overtime_updated', {
+      type: 'overtime_response',
+      attendanceId,
+      duration,
+      period,
+      overtimeScheduledEnd: result.overtimeEnd ? result.overtimeEnd.toISOString() : null,
+    });
+
     res.json({
       message: duration > 0
         ? `Overtime of ${duration}h accepted`
@@ -79,6 +88,11 @@ router.post('/overtime-cancel', authenticate, async (req, res) => {
     if (!result.success) {
       return res.status(result.status).json({ message: result.message });
     }
+
+    emitToUser(req.employee._id, 'overtime_updated', {
+      type: 'overtime_cancelled',
+      attendanceId,
+    });
 
     res.json({
       message: 'Overtime cancelled, session closed',

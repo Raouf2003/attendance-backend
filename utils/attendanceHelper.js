@@ -20,8 +20,11 @@ async function performCheckIn(employeeId, period, location) {
   if (period === 'morning' && (hour < 7 || hour >= 8)) {
     return { success: false, status: 400, message: 'Morning check-in allowed between 07:00 and 07:59' };
   }
-  if (period === 'evening' && !(hour >= 13 || hour < 5)) {
-    return { success: false, status: 400, message: 'Evening check-in allowed between 13:00 and 05:00' };
+  if (period === 'evening') {
+    const isAllowed = (hour >= 1 && hour < 3) || (hour === 3 && now.getMinutes() <= 24);
+    if (!isAllowed) {
+      return { success: false, status: 400, message: 'Evening check-in allowed between 01:00 and 03:24' };
+    }
   }
 
   const dateKey = getDateKey(now);

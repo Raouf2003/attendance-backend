@@ -1,14 +1,7 @@
-const COMPANY_LAT = 35.219445;
-const COMPANY_LNG = 4.204832;
-const GEOFENCE_RADIUS_METERS = 50;
-
 function toRadians(degrees) {
   return degrees * (Math.PI / 180);
 }
 
-/**
- * Calculate haversine distance between two GPS coordinates in meters.
- */
 function haversineDistance(lat1, lng1, lat2, lng2) {
   const R = 6371000;
   const dLat = toRadians(lat2 - lat1);
@@ -23,13 +16,9 @@ function haversineDistance(lat1, lng1, lat2, lng2) {
   return R * c;
 }
 
-/**
- * Validate if given coordinates are inside the company geofence.
- * Returns { valid: true } or { valid: false, message: string }.
- */
-function validateGeofence(lat, lng) {
+function validateGeofence(lat, lng, companyLat, companyLng, radiusMeters) {
   if (lat == null || lng == null) {
-    return { valid: false, message: 'Location data is required for check-in' };
+    return { valid: false, message: 'Location data is required' };
   }
 
   const latNum = parseFloat(lat);
@@ -39,12 +28,12 @@ function validateGeofence(lat, lng) {
     return { valid: false, message: 'Invalid location coordinates' };
   }
 
-  const distance = haversineDistance(latNum, lngNum, COMPANY_LAT, COMPANY_LNG);
+  const distance = haversineDistance(latNum, lngNum, companyLat, companyLng);
 
-  if (distance > GEOFENCE_RADIUS_METERS) {
+  if (distance > radiusMeters) {
     return {
       valid: false,
-      message: `You are outside the allowed area (${Math.round(distance)}m from company, max ${GEOFENCE_RADIUS_METERS}m)`,
+      message: `You are outside the allowed area (${Math.round(distance)}m from company, max ${radiusMeters}m)`,
     };
   }
 
@@ -52,9 +41,6 @@ function validateGeofence(lat, lng) {
 }
 
 module.exports = {
-  COMPANY_LAT,
-  COMPANY_LNG,
-  GEOFENCE_RADIUS_METERS,
   haversineDistance,
   validateGeofence,
 };

@@ -1,15 +1,18 @@
 const SystemSettings = require('../models/SystemSettings');
+const { validateGeofence: haversineValidate } = require('../utils/haversine');
 
-const DEFAULT_SHIFTS = {
+const DEFAULTS = {
   morningStart: '08:00',
   morningEnd: '12:00',
   eveningStart: '13:00',
   eveningEnd: '16:00',
+  companyLocation: { lat: 35.219445, lng: 4.204832 },
+  allowedRadius: 50,
 };
 
 const TIMEZONE_OFFSETS = [1, 2];
 
-let cachedShifts = null;
+let cachedSettings = null;
 
 function parseHHmm(str) {
   if (!str || typeof str !== 'string') return null;
@@ -46,54 +49,6 @@ function utcMinInRange(utcMin, localStart, localEnd) {
   return false;
 }
 
-async function getShifts() {
-  if (cachedShifts) return cachedShifts;
-  const doc = await SystemSettings.findOne().sort({ _id: 1 }).limit(1);
-  if (!doc) {
-    cachedShifts = { ...DEFAULT_SHIFTS };
-    return cachedShifts;
-  }
-  cachedShifts = {
-    morningStart: doc.morningStart || DEFAULT_SHIFTS.morningStart,
-    morningEnd: doc.morningEnd || DEFAULT_SHIFTS.morningEnd,
-    eveningStart: doc.eveningStart || DEFAULT_SHIFTS.eveningStart,
-    eveningEnd: doc.eveningEnd || DEFAULT_SHIFTS.eveningEnd,
-  };
-  return cachedShifts;
-}
-
-function invalidateCache() {
-  cachedShifts = null;
-}
-
-async function getCurrentPeriod() {
-  const now = new Date();
-  const utcMin = now.getUTCHours() * 60 + now.getUTCMinutes();
-  const shifts = await getShifts();
-  if (utcMinInRange(utcMin, shifts.morningStart, shifts.morningEnd)) return 'morning';
-  if (utcMinInRange(utcMin, shifts.eveningStart, shifts.eveningEnd)) return 'evening';
-  const morningEndUtc = Math.max(...localToUtcMinutes(shifts.morningEnd));
-  const eveningStartUtc = Math.min(...localToUtcMinutes(shifts.eveningStart));
-  if (morningEndUtc <= eveningStartUtc) {
-    return utcMin < (morningEndUtc + eveningStartUtc) / 2 ? 'morning' : 'evening';
-  }
-  return 'evening';
-}
-
-async function validateCheckInPeriod(period, utcMin) {
-  const shifts = await getShifts();
-  if (period === 'morning') {
-    if (!utcMinInRange(utcMin, shifts.morningStart, shifts.morningEnd)) {
-      return `Morning check-in allowed between ${shifts.morningStart} and ${shifts.morningEnd}`;
-    }
-  } else if (period === 'evening') {
-    if (!utcMinInRange(utcMin, shifts.eveningStart, shifts.eveningEnd)) {
-      return `Evening check-in allowed between ${shifts.eveningStart} and ${shifts.eveningEnd}`;
-    }
-  }
-  return null;
-}
-
 function localTimeToUtcCronTimes(localHHmm) {
   const utcMinutes = localToUtcMinutes(localHHmm);
   return utcMinutes.map(utcMin => ({
@@ -102,14 +57,73 @@ function localTimeToUtcCronTimes(localHHmm) {
   }));
 }
 
+async function getSettings() {
+  if (cachedSettings) return cachedSettings;
+  const doc = await SystemSettings.findOne().sort({ _id: 1 }).limit(1);
+  if (!doc) {
+    cachedSettings = { ...DEFAULTS, companyLocation: { ...DEFAULTS.companyLocation } };
+    return cachedSettings;
+  }
+  cachedSettings = {
+    morningStart: doc.morningStart || DEFAULTS.morningStart,
+    morningEnd: doc.morningEnd || DEFAULTS.morningEnd,
+    eveningStart: doc.eveningStart || DEFAULTS.eveningStart,
+    eveningEnd: doc.eveningEnd || DEFAULTS.eveningEnd,
+    companyLocation: {
+      lat: doc.companyLocation?.lat ?? DEFAULTS.companyLocation.lat,
+      lng: doc.companyLocation?.lng ?? DEFAULTS.companyLocation.lng,
+    },
+    allowedRadius: doc.allowedRadius ?? DEFAULTS.allowedRadius,
+  };
+  return cachedSettings;
+}
+
+function invalidateCache() {
+  cachedSettings = null;
+}
+
+async function getCurrentPeriod() {
+  const now = new Date();
+  const utcMin = now.getUTCHours() * 60 + now.getUTCMinutes();
+  const settings = await getSettings();
+  if (utcMinInRange(utcMin, settings.morningStart, settings.morningEnd)) return 'morning';
+  if (utcMinInRange(utcMin, settings.eveningStart, settings.eveningEnd)) return 'evening';
+  const morningEndUtc = Math.max(...localToUtcMinutes(settings.morningEnd));
+  const eveningStartUtc = Math.min(...localToUtcMinutes(settings.eveningStart));
+  if (morningEndUtc <= eveningStartUtc) {
+    return utcMin < (morningEndUtc + eveningStartUtc) / 2 ? 'morning' : 'evening';
+  }
+  return 'evening';
+}
+
+async function validateCheckInPeriod(period, utcMin) {
+  const settings = await getSettings();
+  if (period === 'morning') {
+    if (!utcMinInRange(utcMin, settings.morningStart, settings.morningEnd)) {
+      return `Morning check-in allowed between ${settings.morningStart} and ${settings.morningEnd}`;
+    }
+  } else if (period === 'evening') {
+    if (!utcMinInRange(utcMin, settings.eveningStart, settings.eveningEnd)) {
+      return `Evening check-in allowed between ${settings.eveningStart} and ${settings.eveningEnd}`;
+    }
+  }
+  return null;
+}
+
+async function validateGeofence(lat, lng) {
+  const settings = await getSettings();
+  return haversineValidate(lat, lng, settings.companyLocation.lat, settings.companyLocation.lng, settings.allowedRadius);
+}
+
 module.exports = {
-  getShifts,
+  getSettings,
   invalidateCache,
   getCurrentPeriod,
   validateCheckInPeriod,
+  validateGeofence,
   localTimeToUtcCronTimes,
   localToUtcMinutes,
   utcMinInRange,
   parseHHmm,
-  DEFAULT_SHIFTS,
+  DEFAULTS,
 };

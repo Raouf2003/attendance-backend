@@ -1,6 +1,6 @@
 const cron = require('node-cron');
 const Attendance = require('../models/Attendance');
-const { getShifts, localTimeToUtcCronTimes } = require('../services/settingsService');
+const { getSettings, localTimeToUtcCronTimes } = require('../services/settingsService');
 
 const scheduledTasks = [];
 
@@ -60,7 +60,7 @@ function scheduleAutoCheckoutJob(period, cronExpr, label) {
 async function rescheduleAutoCheckout() {
   clearAllTasks();
 
-  const shifts = await getShifts();
+  const shifts = await getSettings();
 
   const morningCrons = localTimeToUtcCronTimes(shifts.morningEnd);
   for (const { hour, minute } of morningCrons) {

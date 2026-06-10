@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const Employee = require('../models/Employee');
 const { authenticate } = require('../middleware/auth');
 const { performCheckIn } = require('../utils/attendanceHelper');
-const { validateGeofence } = require('../utils/haversine');
+const { validateGeofence } = require('../services/settingsService');
 
 const router = express.Router();
 
@@ -126,7 +126,7 @@ router.post('/verify-qr', authenticate, async (req, res) => {
       return res.status(400).json({ message: 'QR token is required', error: 'invalid_qr' });
     }
 
-    const geoCheck = validateGeofence(lat, lng);
+    const geoCheck = await validateGeofence(lat, lng);
     if (!geoCheck.valid) {
       return res.status(403).json({ message: geoCheck.message, error: 'geofence_blocked' });
     }
@@ -175,7 +175,7 @@ router.post('/verify-checkin', authenticate, async (req, res) => {
 
     // ── 3. Validate geofence ──────────────────────────────────────────────────
     const { lat, lng } = req.body;
-    const geoCheck = validateGeofence(lat, lng);
+    const geoCheck = await validateGeofence(lat, lng);
     if (!geoCheck.valid) {
       return res.status(403).json({
         message: geoCheck.message,

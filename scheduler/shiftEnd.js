@@ -2,7 +2,7 @@ const cron = require('node-cron');
 const Attendance = require('../models/Attendance');
 const Employee = require('../models/Employee');
 const { sendMulticastPushNotification } = require('../services/firebase');
-const { getShifts, localTimeToUtcCronTimes, localToUtcMinutes } = require('../services/settingsService');
+const { getSettings, localTimeToUtcCronTimes } = require('../services/settingsService');
 
 const scheduledTasks = [];
 
@@ -84,7 +84,7 @@ function scheduleShiftEndJob(period, cronExpr, label) {
 async function rescheduleShiftEnd() {
   clearAllTasks();
 
-  const shifts = await getShifts();
+  const shifts = await getSettings();
 
   const morningCrons = localTimeToUtcCronTimes(shifts.morningEnd);
   for (const { hour, minute } of morningCrons) {

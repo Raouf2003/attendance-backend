@@ -2,8 +2,8 @@ const express = require('express');
 const Attendance = require('../models/Attendance');
 const { authenticate } = require('../middleware/auth');
 const { performCheckIn } = require('../utils/attendanceHelper');
-const { validateGeofence } = require('../utils/haversine');
-const { getCurrentPeriod, getShifts } = require('../services/settingsService');
+const { validateGeofence } = require('../services/settingsService');
+const { getCurrentPeriod, getSettings } = require('../services/settingsService');
 
 const router = express.Router();
 
@@ -22,7 +22,7 @@ router.post('/checkin', authenticate, async (req, res) => {
   try {
     const { period, lat, lng } = req.body;
 
-    const geoCheck = validateGeofence(lat, lng);
+    const geoCheck = await validateGeofence(lat, lng);
     if (!geoCheck.valid) {
       return res.status(403).json({ message: geoCheck.message, error: 'geofence_blocked' });
     }
@@ -108,7 +108,7 @@ router.get('/status', authenticate, async (req, res) => {
     const now = new Date();
     const dateKey = getDateKey(now);
     const currentPeriod = await getCurrentPeriod();
-    const shifts = await getShifts();
+    const settings = await getSettings();
 
     const records = await Attendance.find({
       employeeId: req.employee._id,
@@ -135,10 +135,14 @@ router.get('/status', authenticate, async (req, res) => {
         overtimeDurationSelected: activeOvertime.overtimeDurationSelected,
       } : null,
       shifts: {
-        morningStart: shifts.morningStart,
-        morningEnd: shifts.morningEnd,
-        eveningStart: shifts.eveningStart,
-        eveningEnd: shifts.eveningEnd,
+        morningStart: settings.morningStart,
+        morningEnd: settings.morningEnd,
+        eveningStart: settings.eveningStart,
+        eveningEnd: settings.eveningEnd,
+      },
+      geofence: {
+        companyLocation: settings.companyLocation,
+        allowedRadius: settings.allowedRadius,
       },
       employee: {
         id: req.employee._id,

@@ -62,11 +62,11 @@ function startShiftEndScheduler() {
     notifyShiftEnd('morning', '12:00 morning shift end');
   });
 
-  cron.schedule('38 2 * * *', () => {
-    notifyShiftEnd('evening', '04:38 evening shift end');
+  cron.schedule('44 2 * * *', () => {
+    notifyShiftEnd('evening', '04:44 evening shift end');
   });
 
-  console.log('[ShiftEnd] Scheduler started (12:00 morning, 04:38 evening [02:38 UTC])');
+  console.log('[ShiftEnd] Scheduler started (12:00 morning, 04:44 evening [02:44 UTC])');
 }
 
 module.exports = { startShiftEndScheduler };

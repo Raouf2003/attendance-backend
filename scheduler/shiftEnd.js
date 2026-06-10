@@ -65,15 +65,25 @@ async function processShiftEnd(period, label) {
 }
 
 function startShiftEndScheduler() {
-  cron.schedule('0 12 * * *', () => {
-    processShiftEnd('morning', '12:00 morning shift end');
+  // Morning ends at 12:00 local → 10:00 UTC (UTC+2) / 11:00 UTC (UTC+1)
+  cron.schedule('0 10 * * *', () => {
+    processShiftEnd('morning', '10:00 UTC morning');
   });
 
-  cron.schedule('0 16 * * *', () => {
-    processShiftEnd('evening', '16:00 evening shift end');
+  cron.schedule('0 11 * * *', () => {
+    processShiftEnd('morning', '11:00 UTC morning');
   });
 
-  console.log('[ShiftEnd] Scheduler started (12:00 morning, 16:00 evening)');
+  // Evening ends at 16:00 local → 14:00 UTC (UTC+2) / 15:00 UTC (UTC+1)
+  cron.schedule('0 14 * * *', () => {
+    processShiftEnd('evening', '14:00 UTC evening');
+  });
+
+  cron.schedule('0 15 * * *', () => {
+    processShiftEnd('evening', '15:00 UTC evening');
+  });
+
+  console.log('[ShiftEnd] Scheduler started (10:00/11:00 UTC morning, 14:00/15:00 UTC evening)');
 }
 
 module.exports = { startShiftEndScheduler };

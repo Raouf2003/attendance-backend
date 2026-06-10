@@ -41,23 +41,39 @@ async function autoCheckoutPeriod(period, label) {
 }
 
 function startAutoCheckoutScheduler() {
-  cron.schedule('0 12 * * 1-5', () => {
-    autoCheckoutPeriod('morning', 'Mon-Fri 12:00 morning');
+  cron.schedule('0 10 * * 1-5', () => {
+    autoCheckoutPeriod('morning', 'Mon-Fri 10:00 morning');
   });
 
-  cron.schedule('0 23 * * 1-5', () => {
-    autoCheckoutPeriod('evening', 'Mon-Fri 23:00 evening');
+  cron.schedule('0 11 * * 1-5', () => {
+    autoCheckoutPeriod('morning', 'Mon-Fri 11:00 morning');
   });
 
-  cron.schedule('30 12 * * 0,6', () => {
-    autoCheckoutPeriod('morning', 'Weekend 12:30 morning');
+  cron.schedule('0 14 * * 1-5', () => {
+    autoCheckoutPeriod('evening', 'Mon-Fri 14:00 evening');
   });
 
-  cron.schedule('0 23 * * 0,6', () => {
-    autoCheckoutPeriod('evening', 'Weekend 23:00 evening');
+  cron.schedule('0 15 * * 1-5', () => {
+    autoCheckoutPeriod('evening', 'Mon-Fri 15:00 evening');
   });
 
-  console.log('Auto checkout scheduler started (morning 12:00, evening 23:00, weekends 12:30/23:00)');
+  cron.schedule('30 10 * * 0,6', () => {
+    autoCheckoutPeriod('morning', 'Weekend 10:30 morning');
+  });
+
+  cron.schedule('30 11 * * 0,6', () => {
+    autoCheckoutPeriod('morning', 'Weekend 11:30 morning');
+  });
+
+  cron.schedule('0 14 * * 0,6', () => {
+    autoCheckoutPeriod('evening', 'Weekend 14:00 evening');
+  });
+
+  cron.schedule('0 15 * * 0,6', () => {
+    autoCheckoutPeriod('evening', 'Weekend 15:00 evening');
+  });
+
+  console.log('Auto checkout scheduler started (10:00/11:00 morning, 14:00/15:00 evening UTC)');
 }
 
 module.exports = { startAutoCheckoutScheduler };

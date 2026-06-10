@@ -31,6 +31,11 @@ const attendanceSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  checkoutType: {
+    type: String,
+    enum: ['manual', 'auto'],
+    default: 'manual',
+  },
   location: {
     lat: { type: Number },
     lng: { type: Number },

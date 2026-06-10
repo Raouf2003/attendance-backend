@@ -45,7 +45,7 @@ router.post('/checkin', authenticate, async (req, res) => {
 
 router.post('/checkout', authenticate, async (req, res) => {
   try {
-    const { period, autoCheckout } = req.body;
+    const { period, autoCheckout, lat, lng } = req.body;
 
     if (!period || !['morning', 'evening'].includes(period)) {
       return res.status(400).json({ message: 'Period must be morning or evening' });
@@ -83,6 +83,10 @@ router.post('/checkout', authenticate, async (req, res) => {
     attendance.totalMinutes = Math.round((now - attendance.checkInTime) / 60000);
     if (autoCheckout) {
       attendance.autoCheckout = true;
+      attendance.checkoutType = 'auto';
+      if (lat != null && lng != null) {
+        attendance.location = { lat, lng };
+      }
     }
     await attendance.save();
 
@@ -95,6 +99,7 @@ router.post('/checkout', authenticate, async (req, res) => {
         checkOutTime: attendance.checkOutTime,
         totalMinutes: attendance.totalMinutes,
         autoCheckout: attendance.autoCheckout,
+        checkoutType: attendance.checkoutType,
       },
     });
   } catch (error) {

@@ -16,6 +16,15 @@ function formatMinutes(totalMinutes) {
   return `${h}h ${m}m`;
 }
 
+function computeNormalMinutes(totalMinutes, overtimeHours) {
+  const ot = overtimeHours || 0;
+  return Math.max(0, (totalMinutes || 0) - ot * 60);
+}
+
+function computeOvertimeMinutes(overtimeHours) {
+  return (overtimeHours || 0) * 60;
+}
+
 function sanitizeCsvField(value) {
   if (value == null) return '';
   const str = String(value);
@@ -308,7 +317,10 @@ router.get('/reports/daily', authenticate, adminOnly, cacheMiddleware(), async (
         period: r.period,
         checkInTime: r.checkInTime,
         checkOutTime: r.checkOutTime,
+        normalMinutes: computeNormalMinutes(r.totalMinutes, r.overtimeHours),
+        overtimeMinutes: computeOvertimeMinutes(r.overtimeHours),
         totalMinutes: r.totalMinutes,
+        overtimeHours: r.overtimeHours || 0,
         autoCheckout: r.autoCheckout,
       }));
 
@@ -330,13 +342,15 @@ router.get('/reports/daily/export', authenticate, adminOnly, async (req, res) =>
     const records = await Attendance.find({ date: targetDate })
       .populate('employeeId', 'fullName employeeNumber');
 
-    let csv = 'Employee Name,Employee Number,Period,Check In,Check Out,Total Minutes,Auto Checkout\n';
+    let csv = 'Employee Name,Employee Number,Period,Check In,Check Out,Overtime Time (min),Total Time (min)\n';
 
     for (const r of records) {
       if (!r.employeeId) continue;
       const checkIn = r.checkInTime ? new Date(r.checkInTime).toLocaleTimeString('en-GB', { hour12: false }) : '-';
       const checkOut = r.checkOutTime ? new Date(r.checkOutTime).toLocaleTimeString('en-GB', { hour12: false }) : '-';
-      csv += `${sanitizeCsvField(r.employeeId.fullName)},${sanitizeCsvField(r.employeeId.employeeNumber)},${sanitizeCsvField(r.date)},${sanitizeCsvField(checkIn)},${sanitizeCsvField(checkOut)},${r.totalMinutes || 0},${r.autoCheckout || false}\n`;
+      const normalMin = computeNormalMinutes(r.totalMinutes, r.overtimeHours);
+      const overtimeMin = computeOvertimeMinutes(r.overtimeHours);
+      csv += `${sanitizeCsvField(r.employeeId.fullName)},${sanitizeCsvField(r.employeeId.employeeNumber)},${sanitizeCsvField(r.period)},${sanitizeCsvField(checkIn)},${sanitizeCsvField(checkOut)},${overtimeMin},${normalMin}\n`;
     }
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -355,22 +369,47 @@ router.get('/reports/monthly/export', authenticate, adminOnly, async (req, res) 
     const targetMonth = parseInt(month) || (now.getMonth() + 1);
 
     const monthStr = String(targetMonth).padStart(2, '0');
+    const lastDay = String(new Date(targetYear, targetMonth, 0).getDate()).padStart(2, '0');
 
-    const lastDay = new Date(targetYear, targetMonth, 0).getDate();
-    const records = await Attendance.find({
-      date: {
-        $gte: `${targetYear}-${monthStr}-01`,
-        $lte: `${targetYear}-${monthStr}-${String(lastDay).padStart(2, '0')}`,
+    const dateFilter = {
+      $gte: `${targetYear}-${monthStr}-01`,
+      $lte: `${targetYear}-${monthStr}-${lastDay}`,
+    };
+
+    const aggregation = [
+      { $match: { date: dateFilter } },
+      { $lookup: { from: 'employees', localField: 'employeeId', foreignField: '_id', as: 'employee' } },
+      { $unwind: { path: '$employee', preserveNullAndEmptyArrays: false } },
+      {
+        $group: {
+          _id: { employeeId: '$employeeId', date: '$date' },
+          employeeName: { $first: '$employee.fullName' },
+          employeeNumber: { $first: '$employee.employeeNumber' },
+          totalMinutes: { $sum: { $ifNull: ['$totalMinutes', 0] } },
+          overtimeHours: { $sum: { $ifNull: ['$overtimeHours', 0] } },
+        },
       },
-    }).populate('employeeId', 'fullName employeeNumber').sort({ date: 1 });
+      {
+        $group: {
+          _id: '$_id.employeeId',
+          employeeName: { $first: '$employeeName' },
+          employeeNumber: { $first: '$employeeNumber' },
+          totalMinutes: { $sum: '$totalMinutes' },
+          totalOvertimeHours: { $sum: '$overtimeHours' },
+          daysPresent: { $sum: 1 },
+        },
+      },
+      { $sort: { employeeName: 1 } },
+    ];
 
-    let csv = 'Employee Name,Employee Number,Date,Period,Check In,Check Out,Total Minutes,Auto Checkout\n';
+    const results = await Attendance.aggregate(aggregation);
 
-    for (const r of records) {
-      if (!r.employeeId) continue;
-      const checkIn = r.checkInTime ? new Date(r.checkInTime).toLocaleTimeString('en-GB', { hour12: false }) : '-';
-      const checkOut = r.checkOutTime ? new Date(r.checkOutTime).toLocaleTimeString('en-GB', { hour12: false }) : '-';
-      csv += `${sanitizeCsvField(r.employeeId.fullName)},${sanitizeCsvField(r.employeeId.employeeNumber)},${sanitizeCsvField(r.date)},${sanitizeCsvField(checkIn)},${sanitizeCsvField(checkOut)},${r.totalMinutes || 0},${r.autoCheckout || false}\n`;
+    let csv = 'Employee Name,Employee Number,Days Present,Total Normal Hours (min),Total Overtime Hours (min)\n';
+
+    for (const r of results) {
+      const normalMin = computeNormalMinutes(r.totalMinutes, r.totalOvertimeHours);
+      const overtimeMin = computeOvertimeMinutes(r.totalOvertimeHours);
+      csv += `${sanitizeCsvField(r.employeeName)},${sanitizeCsvField(r.employeeNumber)},${r.daysPresent},${normalMin},${overtimeMin}\n`;
     }
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -394,12 +433,14 @@ router.get('/reports/employee/:id/export', authenticate, adminOnly, async (req, 
 
     const records = await Attendance.find(filter).sort({ date: 1 });
 
-    let csv = 'Date,Period,Check In,Check Out,Total Minutes,Auto Checkout\n';
+    let csv = 'Date,Period,Check In,Check Out,Normal Time (min),Overtime Time (min),Total Minutes\n';
 
     for (const r of records) {
       const checkIn = r.checkInTime ? new Date(r.checkInTime).toLocaleTimeString('en-GB', { hour12: false }) : '-';
       const checkOut = r.checkOutTime ? new Date(r.checkOutTime).toLocaleTimeString('en-GB', { hour12: false }) : '-';
-      csv += `${sanitizeCsvField(r.date)},${sanitizeCsvField(r.period)},${sanitizeCsvField(checkIn)},${sanitizeCsvField(checkOut)},${r.totalMinutes || 0},${r.autoCheckout || false}\n`;
+      const normalMin = computeNormalMinutes(r.totalMinutes, r.overtimeHours);
+      const overtimeMin = computeOvertimeMinutes(r.overtimeHours);
+      csv += `${sanitizeCsvField(r.date)},${sanitizeCsvField(r.period)},${sanitizeCsvField(checkIn)},${sanitizeCsvField(checkOut)},${normalMin},${overtimeMin},${r.totalMinutes || 0}\n`;
     }
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -456,21 +497,39 @@ router.get('/reports/monthly', authenticate, adminOnly, cacheMiddleware(), async
       { $match: { date: dateFilter } },
       { $lookup: { from: 'employees', localField: 'employeeId', foreignField: '_id', as: 'employee' } },
       { $unwind: { path: '$employee', preserveNullAndEmptyArrays: false } },
+      // First group: per (employee, date) — so each date counts as 1 day present
       {
         $group: {
-          _id: '$employeeId',
+          _id: { employeeId: '$employeeId', date: '$date' },
           employeeName: { $first: '$employee.fullName' },
           employeeNumber: { $first: '$employee.employeeNumber' },
           totalMinutes: { $sum: { $ifNull: ['$totalMinutes', 0] } },
-          daysPresent: { $sum: 1 },
-          days: {
+          overtimeHours: { $sum: { $ifNull: ['$overtimeHours', 0] } },
+          records: {
             $push: {
-              date: '$date',
               period: '$period',
               checkInTime: '$checkInTime',
               checkOutTime: '$checkOutTime',
               totalMinutes: '$totalMinutes',
+              overtimeHours: '$overtimeHours',
               autoCheckout: '$autoCheckout',
+            },
+          },
+        },
+      },
+      // Second group: per employee — sum across dates, unique date count
+      {
+        $group: {
+          _id: '$_id.employeeId',
+          employeeName: { $first: '$employeeName' },
+          employeeNumber: { $first: '$employeeNumber' },
+          totalMinutes: { $sum: '$totalMinutes' },
+          totalOvertimeHours: { $sum: '$overtimeHours' },
+          daysPresent: { $sum: 1 },
+          days: {
+            $push: {
+              date: '$_id.date',
+              records: '$records',
             },
           },
         },
@@ -485,13 +544,19 @@ router.get('/reports/monthly', authenticate, adminOnly, cacheMiddleware(), async
 
     const results = await Attendance.aggregate(aggregation);
 
-    const report = results.map(r => ({
-      employeeName: r.employeeName,
-      employeeNumber: r.employeeNumber,
-      totalMinutes: r.totalMinutes,
-      daysPresent: r.daysPresent,
-      days: r.days,
-    }));
+    const report = results.map(r => {
+      const normalMinutes = computeNormalMinutes(r.totalMinutes, r.totalOvertimeHours);
+      const overtimeMinutes = computeOvertimeMinutes(r.totalOvertimeHours);
+      return {
+        employeeName: r.employeeName,
+        employeeNumber: r.employeeNumber,
+        daysPresent: r.daysPresent,
+        totalNormalMinutes: normalMinutes,
+        totalOvertimeMinutes: overtimeMinutes,
+        totalMinutes: r.totalMinutes,
+        days: r.days,
+      };
+    });
 
     if (page || limit) {
       return res.json(paginatedResponse(report, total, page, limit));

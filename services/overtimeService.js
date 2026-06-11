@@ -67,10 +67,20 @@ async function cancelOvertime(attendanceId, employeeId) {
   const now = new Date();
   const totalMinutes = Math.round((now - attendance.checkInTime) / 60000);
 
+  const otDuration = attendance.overtimeDurationSelected || 0;
+  let otWorkedMin = 0;
+  if (otDuration > 0 && attendance.overtimeResponseAt) {
+    const otStartMs = attendance.overtimeResponseAt.getTime();
+    otWorkedMin = Math.min(
+      otDuration * 60,
+      Math.round((now.getTime() - otStartMs) / 60000),
+    );
+  }
+
   attendance.checkOutTime = now;
   attendance.totalMinutes = totalMinutes;
-  attendance.normalHours = totalMinutes;
-  attendance.overtimeHours = 0;
+  attendance.normalHours = totalMinutes - otWorkedMin;
+  attendance.overtimeHours = otWorkedMin / 60;
   attendance.autoCheckout = true;
   attendance.checkoutType = 'auto';
   attendance.overtimeScheduledEnd = null;

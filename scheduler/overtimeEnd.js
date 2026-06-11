@@ -20,7 +20,7 @@ async function processOvertimeEnd() {
 
       record.checkOutTime = now;
       record.totalMinutes = totalMinutes;
-      record.normalHours = totalMinutes;
+      record.normalHours = totalMinutes - duration * 60;
       record.overtimeHours = duration;
       record.autoCheckout = true;
       record.checkoutType = 'auto';

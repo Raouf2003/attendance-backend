@@ -10,7 +10,7 @@ const DEFAULTS = {
   allowedRadius: 50,
 };
 
-const TIMEZONE_OFFSETS = [1, 2];
+const TIMEZONE_OFFSETS = [1];
 
 let cachedSettings = null;
 

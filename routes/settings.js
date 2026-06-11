@@ -66,11 +66,13 @@ router.put('/settings/shifts', authenticate, adminOnly, async (req, res) => {
       return res.status(400).json({ message: 'Morning start must be before morning end' });
     }
 
-    if (eveningStartMin >= eveningEndMin) {
+    const eveningEndAdj = eveningEndMin === 0 ? 1440 : eveningEndMin;
+    if (eveningStartMin >= eveningEndAdj) {
       return res.status(400).json({ message: 'Evening start must be before evening end' });
     }
 
-    if (morningEndMin > eveningStartMin) {
+    const eveningStartAdj = eveningStartMin === 0 ? 1440 : eveningStartMin;
+    if (morningEndMin > eveningStartAdj) {
       return res.status(400).json({ message: 'Morning end must not overlap with evening start' });
     }
 

@@ -41,14 +41,14 @@ app.use(express.json({ limit: '10mb' }));
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 200,
   message: { message: 'Too many requests, please try again later' },
 });
 app.use('/api', apiLimiter);
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 40,
+  max: 20,
   message: { message: 'Too many login attempts, please try again later' },
 });
 app.use('/api/login', authLimiter);

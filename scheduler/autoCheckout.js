@@ -65,7 +65,7 @@ async function rescheduleAutoCheckout() {
   const morningCrons = localTimeToUtcCronTimes(shifts.morningEnd);
   for (const { hour, minute } of morningCrons) {
     const wdExpr = `${minute} ${hour} * * 1-5`;
-    const weExpr = `${minute} ${hour + 1 > 23 ? (hour + 1) % 24 : minute} ${hour} * * 0,6`;
+    const weExpr = `${minute} ${hour} * * 0,6`;
     scheduleAutoCheckoutJob('morning', wdExpr, `weekday ${hour}:${minute} morning`);
     const weMinute = (minute + 30) % 60;
     const weHour = minute + 30 >= 60 ? (hour + 1) % 24 : hour;

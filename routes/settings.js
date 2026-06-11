@@ -13,6 +13,7 @@ function isValidTime(str) {
 
 router.get('/settings/shifts', authenticate, async (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     const settings = await getSettings();
     res.json({
       morningStart: settings.morningStart,
@@ -70,8 +71,8 @@ router.put('/settings/shifts', authenticate, adminOnly, async (req, res) => {
 
     invalidateCache();
 
-    rescheduleShiftEnd();
-    rescheduleAutoCheckout();
+    await rescheduleShiftEnd();
+    await rescheduleAutoCheckout();
 
     const updated = await getSettings();
     res.json({
@@ -89,6 +90,7 @@ router.put('/settings/shifts', authenticate, adminOnly, async (req, res) => {
 
 router.get('/settings/geofence', authenticate, async (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     const settings = await getSettings();
     res.json({
       companyLocation: settings.companyLocation,

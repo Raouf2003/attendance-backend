@@ -1,6 +1,8 @@
 const cron = require('node-cron');
 const Attendance = require('../models/Attendance');
+const Employee = require('../models/Employee');
 const { getSettings, localTimeToUtcCronTimes } = require('../services/settingsService');
+const { emitToUser, emitToAll } = require('../services/socketService');
 
 const scheduledTasks = [];
 
@@ -33,6 +35,22 @@ async function processShiftEnd(period, label) {
       record.autoCheckout = true;
       record.checkoutType = 'auto';
       await record.save();
+
+      const employee = await Employee.findById(record.employeeId).select('fullName employeeNumber');
+      emitToUser(record.employeeId, 'attendance_updated', {
+        type: 'checkout',
+        period: record.period,
+        attendanceId: record._id,
+        autoCheckout: true,
+      });
+      emitToAll('attendance_updated', {
+        type: 'checkout',
+        employeeId: record.employeeId.toString(),
+        employeeName: employee?.fullName || 'Unknown',
+        employeeNumber: employee?.employeeNumber || '',
+        period: record.period,
+      });
+
       console.log(`[ShiftEnd] Auto-checkout ${record.employeeId} (${label})`);
     }
 

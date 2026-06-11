@@ -1,6 +1,8 @@
 const cron = require('node-cron');
 const Attendance = require('../models/Attendance');
+const Employee = require('../models/Employee');
 const { getSettings, localTimeToUtcCronTimes } = require('../services/settingsService');
+const { emitToUser, emitToAll } = require('../services/socketService');
 
 const scheduledTasks = [];
 
@@ -8,38 +10,52 @@ async function autoCheckoutPeriod(period, label) {
   try {
     const dateKey = new Date().toISOString().split('T')[0];
 
-    const result = await Attendance.updateMany(
-      {
-        date: dateKey,
-        period: period,
-        checkOutTime: null,
-      },
-      [
-        {
+    const records = await Attendance.find({
+      date: dateKey,
+      period: period,
+      checkOutTime: null,
+    }).populate('employeeId', 'fullName employeeNumber');
+
+    if (records.length === 0) return;
+
+    const now = new Date();
+    const bulkOps = records.map(r => ({
+      updateOne: {
+        filter: { _id: r._id },
+        update: {
           $set: {
-            checkOutTime: new Date(),
-            totalMinutes: {
-              $round: [
-                {
-                  $divide: [
-                    { $subtract: [new Date(), '$checkInTime'] },
-                    60000,
-                  ],
-                },
-                0,
-              ],
-            },
+            checkOutTime: now,
+            totalMinutes: Math.round((now - r.checkInTime) / 60000),
+            normalHours: Math.round((now - r.checkInTime) / 60000) / 60,
             autoCheckout: true,
+            checkoutType: 'auto',
           },
         },
-      ]
-    );
+      },
+    }));
 
-    if (result.modifiedCount > 0) {
-      console.log(`Auto checked out ${result.modifiedCount} employees (${label})`);
+    await Attendance.bulkWrite(bulkOps);
+
+    for (const record of records) {
+      emitToUser(record.employeeId, 'attendance_updated', {
+        type: 'checkout',
+        period: record.period,
+        attendanceId: record._id,
+        autoCheckout: true,
+      });
+      const emp = record.employeeId;
+      emitToAll('attendance_updated', {
+        type: 'checkout',
+        employeeId: emp._id.toString(),
+        employeeName: emp.fullName || 'Unknown',
+        employeeNumber: emp.employeeNumber || '',
+        period: record.period,
+      });
     }
+
+    console.log(`[AutoCheckout] Checked out ${records.length} employees (${label})`);
   } catch (error) {
-    console.error(`Auto checkout error (${label}):`, error);
+    console.error(`[AutoCheckout] Error (${label}):`, error);
   }
 }
 

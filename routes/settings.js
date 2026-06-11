@@ -11,10 +11,26 @@ function isValidTime(str) {
   return parseHHmm(str) !== null;
 }
 
+router.get('/settings/debug', authenticate, adminOnly, async (req, res) => {
+  try {
+    const fromDb = await SystemSettings.findOne().sort({ _id: 1 }).limit(1);
+    const fromCache = await getSettings();
+    res.json({
+      docCount: await SystemSettings.countDocuments(),
+      fromDb: fromDb ? { eveningEnd: fromDb.eveningEnd, eveningStart: fromDb.eveningStart, morningStart: fromDb.morningStart, morningEnd: fromDb.morningEnd } : null,
+      fromCache: { eveningEnd: fromCache.eveningEnd, eveningStart: fromCache.eveningStart, morningStart: fromCache.morningStart, morningEnd: fromCache.morningEnd },
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 router.get('/settings/shifts', authenticate, async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    console.log('[Settings] GET /settings/shifts before getSettings()');
     const settings = await getSettings();
+    console.log('[Settings] GET /settings/shifts returns eveningEnd:', settings.eveningEnd);
     res.json({
       morningStart: settings.morningStart,
       morningEnd: settings.morningEnd,
@@ -62,12 +78,16 @@ router.put('/settings/shifts', authenticate, adminOnly, async (req, res) => {
     if (!doc) {
       doc = new SystemSettings();
     }
+    const oldEveningEnd = doc.eveningEnd;
+    console.log('[Settings] PUT saving — eveningEnd:', eveningEnd, '(old:', oldEveningEnd, ')');
     doc.morningStart = morningStart;
     doc.morningEnd = morningEnd;
     doc.eveningStart = eveningStart;
     doc.eveningEnd = eveningEnd;
     doc.updatedBy = req.employee._id;
     await doc.save();
+    const afterSave = await SystemSettings.findOne().sort({ _id: 1 }).limit(1);
+    console.log('[Settings] PUT after save — DB has eveningEnd:', afterSave?.eveningEnd);
 
     invalidateCache();
 
@@ -75,6 +95,7 @@ router.put('/settings/shifts', authenticate, adminOnly, async (req, res) => {
     await rescheduleAutoCheckout();
 
     const updated = await getSettings();
+    console.log('[Settings] PUT response — sending eveningEnd:', updated.eveningEnd);
     res.json({
       message: 'Shift settings updated successfully',
       morningStart: updated.morningStart,

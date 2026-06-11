@@ -90,12 +90,7 @@ router.post('/checkout', authenticate, async (req, res) => {
 
     attendance.checkOutTime = now;
     attendance.totalMinutes = Math.round((now - attendance.checkInTime) / 60000);
-    const otH = attendance.overtimeDurationSelected || 0;
-    attendance.normalHours = attendance.totalMinutes - otH * 60;
-    attendance.overtimeHours = otH;
-    if (attendance.overtimeScheduledEnd) {
-      attendance.overtimeScheduledEnd = null;
-    }
+    attendance.normalHours = attendance.totalMinutes / 60;
     if (autoCheckout) {
       attendance.autoCheckout = true;
       attendance.checkoutType = 'auto';
@@ -153,22 +148,10 @@ router.get('/status', authenticate, async (req, res) => {
     const morning = records.find(r => r.period === 'morning') || null;
     const evening = records.find(r => r.period === 'evening') || null;
 
-    const activeOvertime = await Attendance.findOne({
-      employeeId: req.employee._id,
-      overtimeScheduledEnd: { $ne: null },
-      checkOutTime: null,
-    });
-
     res.json({
       currentPeriod,
       morning: { status: getPeriodStatus(morning), attendance: morning },
       evening: { status: getPeriodStatus(evening), attendance: evening },
-      activeOvertime: activeOvertime ? {
-        id: activeOvertime._id,
-        period: activeOvertime.period,
-        overtimeScheduledEnd: activeOvertime.overtimeScheduledEnd,
-        overtimeDurationSelected: activeOvertime.overtimeDurationSelected,
-      } : null,
       shifts: {
         morningStart: settings.morningStart,
         morningEnd: settings.morningEnd,
@@ -210,22 +193,10 @@ router.get('/attendance/current-state', authenticate, async (req, res) => {
     const morning = records.find(r => r.period === 'morning') || null;
     const evening = records.find(r => r.period === 'evening') || null;
 
-    const activeOvertime = await Attendance.findOne({
-      employeeId: req.employee._id,
-      overtimeScheduledEnd: { $ne: null },
-      checkOutTime: null,
-    });
-
     res.json({
       currentPeriod,
       morning: { status: getPeriodStatus(morning), attendance: morning },
       evening: { status: getPeriodStatus(evening), attendance: evening },
-      activeOvertime: activeOvertime ? {
-        id: activeOvertime._id,
-        period: activeOvertime.period,
-        overtimeScheduledEnd: activeOvertime.overtimeScheduledEnd,
-        overtimeDurationSelected: activeOvertime.overtimeDurationSelected,
-      } : null,
       shifts: {
         morningStart: settings.morningStart,
         morningEnd: settings.morningEnd,

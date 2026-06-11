@@ -16,15 +16,6 @@ function formatMinutes(totalMinutes) {
   return `${h}h ${m}m`;
 }
 
-function computeNormalMinutes(totalMinutes, overtimeHours) {
-  const ot = overtimeHours || 0;
-  return Math.max(0, (totalMinutes || 0) - ot * 60);
-}
-
-function computeOvertimeMinutes(overtimeHours) {
-  return (overtimeHours || 0) * 60;
-}
-
 function sanitizeCsvField(value) {
   if (value == null) return '';
   const str = String(value);
@@ -305,28 +296,17 @@ router.get('/admin/live-employees', authenticate, adminOnly, async (req, res) =>
       .populate('employeeId', 'fullName employeeNumber')
       .sort({ checkInTime: -1 });
 
-    const working = [];
-    const overtime = [];
-
-    for (const r of activeRecords) {
-      if (!r.employeeId) continue;
-      const hasActiveOvertime = r.overtimeScheduledEnd && r.overtimeScheduledEnd > now;
-      const entry = {
+    const working = activeRecords
+      .filter(r => r.employeeId)
+      .map(r => ({
         employeeId: r.employeeId._id,
         fullName: r.employeeId.fullName,
         employeeNumber: r.employeeId.employeeNumber,
         period: r.period,
         checkInTime: r.checkInTime,
-      };
-      if (hasActiveOvertime) {
-        entry.overtimeScheduledEnd = r.overtimeScheduledEnd;
-        overtime.push(entry);
-      } else {
-        working.push(entry);
-      }
-    }
+      }));
 
-    res.json({ working, overtime });
+    res.json({ working });
   } catch (error) {
     console.error('Live employees error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -355,10 +335,8 @@ router.get('/reports/daily', authenticate, adminOnly, cacheMiddleware(), async (
         period: r.period,
         checkInTime: r.checkInTime,
         checkOutTime: r.checkOutTime,
-        normalMinutes: computeNormalMinutes(r.totalMinutes, r.overtimeHours),
-        overtimeMinutes: computeOvertimeMinutes(r.overtimeHours),
+        normalMinutes: r.totalMinutes || 0,
         totalMinutes: r.totalMinutes,
-        overtimeHours: r.overtimeHours || 0,
         autoCheckout: r.autoCheckout,
       }));
 
@@ -380,15 +358,13 @@ router.get('/reports/daily/export', authenticate, adminOnly, async (req, res) =>
     const records = await Attendance.find({ date: targetDate })
       .populate('employeeId', 'fullName employeeNumber');
 
-    let csv = 'Employee Name,Employee Number,Period,Check In,Check Out,Overtime Time (min),Total Time (min)\n';
+    let csv = 'Employee Name,Employee Number,Period,Check In,Check Out,Total Time (min)\n';
 
     for (const r of records) {
       if (!r.employeeId) continue;
       const checkIn = r.checkInTime ? new Date(r.checkInTime).toLocaleTimeString('en-GB', { hour12: false }) : '-';
       const checkOut = r.checkOutTime ? new Date(r.checkOutTime).toLocaleTimeString('en-GB', { hour12: false }) : '-';
-      const normalMin = computeNormalMinutes(r.totalMinutes, r.overtimeHours);
-      const overtimeMin = computeOvertimeMinutes(r.overtimeHours);
-      csv += `${sanitizeCsvField(r.employeeId.fullName)},${sanitizeCsvField(r.employeeId.employeeNumber)},${sanitizeCsvField(r.period)},${sanitizeCsvField(checkIn)},${sanitizeCsvField(checkOut)},${overtimeMin},${normalMin}\n`;
+      csv += `${sanitizeCsvField(r.employeeId.fullName)},${sanitizeCsvField(r.employeeId.employeeNumber)},${sanitizeCsvField(r.period)},${sanitizeCsvField(checkIn)},${sanitizeCsvField(checkOut)},${r.totalMinutes || 0}\n`;
     }
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -424,7 +400,6 @@ router.get('/reports/monthly/export', authenticate, adminOnly, async (req, res) 
           employeeName: { $first: '$employee.fullName' },
           employeeNumber: { $first: '$employee.employeeNumber' },
           totalMinutes: { $sum: { $ifNull: ['$totalMinutes', 0] } },
-          overtimeHours: { $sum: { $ifNull: ['$overtimeHours', 0] } },
         },
       },
       {
@@ -433,7 +408,6 @@ router.get('/reports/monthly/export', authenticate, adminOnly, async (req, res) 
           employeeName: { $first: '$employeeName' },
           employeeNumber: { $first: '$employeeNumber' },
           totalMinutes: { $sum: '$totalMinutes' },
-          totalOvertimeHours: { $sum: '$overtimeHours' },
           daysPresent: { $sum: 1 },
         },
       },
@@ -442,12 +416,10 @@ router.get('/reports/monthly/export', authenticate, adminOnly, async (req, res) 
 
     const results = await Attendance.aggregate(aggregation);
 
-    let csv = 'Employee Name,Employee Number,Days Present,Total Normal Hours (min),Total Overtime Hours (min)\n';
+    let csv = 'Employee Name,Employee Number,Days Present,Total Time (min)\n';
 
     for (const r of results) {
-      const normalMin = computeNormalMinutes(r.totalMinutes, r.totalOvertimeHours);
-      const overtimeMin = computeOvertimeMinutes(r.totalOvertimeHours);
-      csv += `${sanitizeCsvField(r.employeeName)},${sanitizeCsvField(r.employeeNumber)},${r.daysPresent},${normalMin},${overtimeMin}\n`;
+      csv += `${sanitizeCsvField(r.employeeName)},${sanitizeCsvField(r.employeeNumber)},${r.daysPresent},${r.totalMinutes || 0}\n`;
     }
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -471,14 +443,12 @@ router.get('/reports/employee/:id/export', authenticate, adminOnly, async (req, 
 
     const records = await Attendance.find(filter).sort({ date: 1 });
 
-    let csv = 'Date,Period,Check In,Check Out,Normal Time (min),Overtime Time (min),Total Minutes\n';
+    let csv = 'Date,Period,Check In,Check Out,Total Minutes\n';
 
     for (const r of records) {
       const checkIn = r.checkInTime ? new Date(r.checkInTime).toLocaleTimeString('en-GB', { hour12: false }) : '-';
       const checkOut = r.checkOutTime ? new Date(r.checkOutTime).toLocaleTimeString('en-GB', { hour12: false }) : '-';
-      const normalMin = computeNormalMinutes(r.totalMinutes, r.overtimeHours);
-      const overtimeMin = computeOvertimeMinutes(r.overtimeHours);
-      csv += `${sanitizeCsvField(r.date)},${sanitizeCsvField(r.period)},${sanitizeCsvField(checkIn)},${sanitizeCsvField(checkOut)},${normalMin},${overtimeMin},${r.totalMinutes || 0}\n`;
+      csv += `${sanitizeCsvField(r.date)},${sanitizeCsvField(r.period)},${sanitizeCsvField(checkIn)},${sanitizeCsvField(checkOut)},${r.totalMinutes || 0}\n`;
     }
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -542,14 +512,12 @@ router.get('/reports/monthly', authenticate, adminOnly, cacheMiddleware(), async
           employeeName: { $first: '$employee.fullName' },
           employeeNumber: { $first: '$employee.employeeNumber' },
           totalMinutes: { $sum: { $ifNull: ['$totalMinutes', 0] } },
-          overtimeHours: { $sum: { $ifNull: ['$overtimeHours', 0] } },
           records: {
             $push: {
               period: '$period',
               checkInTime: '$checkInTime',
               checkOutTime: '$checkOutTime',
               totalMinutes: '$totalMinutes',
-              overtimeHours: '$overtimeHours',
               autoCheckout: '$autoCheckout',
             },
           },
@@ -562,7 +530,6 @@ router.get('/reports/monthly', authenticate, adminOnly, cacheMiddleware(), async
           employeeName: { $first: '$employeeName' },
           employeeNumber: { $first: '$employeeNumber' },
           totalMinutes: { $sum: '$totalMinutes' },
-          totalOvertimeHours: { $sum: '$overtimeHours' },
           daysPresent: { $sum: 1 },
           days: {
             $push: {
@@ -582,19 +549,13 @@ router.get('/reports/monthly', authenticate, adminOnly, cacheMiddleware(), async
 
     const results = await Attendance.aggregate(aggregation);
 
-    const report = results.map(r => {
-      const normalMinutes = computeNormalMinutes(r.totalMinutes, r.totalOvertimeHours);
-      const overtimeMinutes = computeOvertimeMinutes(r.totalOvertimeHours);
-      return {
-        employeeName: r.employeeName,
-        employeeNumber: r.employeeNumber,
-        daysPresent: r.daysPresent,
-        totalNormalMinutes: normalMinutes,
-        totalOvertimeMinutes: overtimeMinutes,
-        totalMinutes: r.totalMinutes,
-        days: r.days,
-      };
-    });
+    const report = results.map(r => ({
+      employeeName: r.employeeName,
+      employeeNumber: r.employeeNumber,
+      daysPresent: r.daysPresent,
+      totalMinutes: r.totalMinutes,
+      days: r.days,
+    }));
 
     if (page || limit) {
       return res.json(paginatedResponse(report, total, page, limit));

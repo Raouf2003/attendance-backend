@@ -1,9 +1,6 @@
 const cron = require('node-cron');
 const Attendance = require('../models/Attendance');
-const Employee = require('../models/Employee');
-const { sendMulticastPushNotification } = require('../services/firebase');
 const { getSettings, localTimeToUtcCronTimes } = require('../services/settingsService');
-const { emitToUser, emitToAll } = require('../services/socketService');
 
 const scheduledTasks = [];
 
@@ -20,7 +17,6 @@ async function processShiftEnd(period, label) {
       period,
       checkInTime: { $ne: null },
       checkOutTime: null,
-      overtimeRequested: { $ne: true },
     });
 
     if (activeRecords.length === 0) {
@@ -30,50 +26,14 @@ async function processShiftEnd(period, label) {
 
     for (const record of activeRecords) {
       const now = new Date();
-
-      const employee = await Employee.findById(record.employeeId);
-      if (employee && employee.fcmTokens && employee.fcmTokens.length > 0) {
-        // Offer overtime: don't auto-checkout yet
-        record.overtimeRequested = true;
-        await record.save();
-
-        const result = await sendMulticastPushNotification(
-          employee.fcmTokens,
-          'Shift Ended',
-          'Your shift has ended. Tap to choose overtime.',
-          {
-            type: 'overtime_request',
-            attendanceId: record._id.toString(),
-            period,
-            date: dateKey,
-          },
-        );
-
-        emitToUser(record.employeeId, 'overtime_updated', {
-          type: 'shift_ended',
-          attendanceId: record._id.toString(),
-          period,
-          overtimeRequested: true,
-        });
-        emitToAll('attendance_updated', {
-          type: 'shift_ended',
-          attendanceId: record._id.toString(),
-          employeeId: record.employeeId.toString(),
-          period,
-        });
-
-        console.log(`[ShiftEnd] Notified ${employee.employeeNumber} (${label}): ${result.success} sent, ${result.failure} failed`);
-      } else {
-        // No FCM tokens → auto-checkout normally
-        const totalMinutes = Math.round((now - record.checkInTime) / 60000);
-        record.checkOutTime = now;
-        record.totalMinutes = totalMinutes;
-        record.normalHours = totalMinutes;
-        record.autoCheckout = true;
-        record.checkoutType = 'auto';
-        await record.save();
-        console.log(`[ShiftEnd] Auto-checkout ${record.employeeId} (${label}): no FCM tokens`);
-      }
+      const totalMinutes = Math.round((now - record.checkInTime) / 60000);
+      record.checkOutTime = now;
+      record.totalMinutes = totalMinutes;
+      record.normalHours = totalMinutes / 60;
+      record.autoCheckout = true;
+      record.checkoutType = 'auto';
+      await record.save();
+      console.log(`[ShiftEnd] Auto-checkout ${record.employeeId} (${label})`);
     }
 
     console.log(`[ShiftEnd] ${label} — processed ${activeRecords.length} employees`);

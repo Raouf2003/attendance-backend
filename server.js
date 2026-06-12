@@ -15,8 +15,8 @@ const employeeReportsRoutes = require('./routes/employeeReports');
 const verificationRoutes = require('./routes/verification');
 const notificationRoutes = require('./routes/notifications');
 const settingsRoutes = require('./routes/settings');
-const { startAutoCheckoutScheduler } = require('./scheduler/autoCheckout');
-const { startShiftEndScheduler } = require('./scheduler/shiftEnd');
+const heartbeatRoutes = require('./routes/heartbeat');
+const { startServerSweep } = require('./scheduler/serverSweep');
 const { initFirebase } = require('./services/firebase');
 const { initSocketIO } = require('./services/socketService');
 const Employee = require('./models/Employee');
@@ -60,6 +60,7 @@ app.use('/api', employeeReportsRoutes);
 app.use('/api', verificationRoutes);
 app.use('/api', notificationRoutes);
 app.use('/api', settingsRoutes);
+app.use('/api', heartbeatRoutes);
 
 app.get('/api/health', async (req, res) => {
   const dbState = mongoose.connection.readyState;
@@ -112,8 +113,18 @@ mongoose.connect(MONGODB_URI, {
   }
 
   initFirebase();
-  startAutoCheckoutScheduler();
-  startShiftEndScheduler();
+
+  const useOldSchedulers = process.env.FALLBACK_SCHEDULER === 'true';
+  if (useOldSchedulers) {
+    const { startAutoCheckoutScheduler } = require('./scheduler/autoCheckout');
+    const { startShiftEndScheduler } = require('./scheduler/shiftEnd');
+    startAutoCheckoutScheduler();
+    startShiftEndScheduler();
+    console.log('[Server] Using OLD schedulers (FALLBACK_SCHEDULER=true)');
+  } else {
+    startServerSweep();
+    console.log('[Server] Using NEW single serverSweep scheduler');
+  }
 
   server = app.listen(PORT, () => {
     initSocketIO(server);

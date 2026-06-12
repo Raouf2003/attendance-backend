@@ -584,4 +584,17 @@ router.get('/employee-reports', authenticate, adminOnly, async (req, res) => {
   }
 });
 
+router.delete('/employee-reports/:id', authenticate, adminOnly, async (req, res) => {
+  try {
+    const report = await Report.findByIdAndDelete(req.params.id);
+    if (!report) {
+      return res.status(404).json({ message: 'Report not found' });
+    }
+    res.json({ message: 'Report deleted' });
+  } catch (error) {
+    console.error('Delete report error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 module.exports = router;

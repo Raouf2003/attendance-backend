@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const Employee = require('../models/Employee');
 const Attendance = require('../models/Attendance');
 const Report = require('../models/Report');
+const AuditLog = require('../models/AuditLog');
 const { authenticate, adminOnly } = require('../middleware/auth');
 const { paginate, paginatedResponse } = require('../utils/pagination');
 const { cacheMiddleware, clearCache } = require('../middleware/cache');
@@ -594,6 +595,72 @@ router.delete('/employee-reports/:id', authenticate, adminOnly, async (req, res)
     res.json({ message: 'Report deleted' });
   } catch (error) {
     console.error('Delete report error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+router.post('/admin/attendance', authenticate, adminOnly, async (req, res) => {
+  try {
+    const { employeeId, date, period, checkInTime, checkOutTime, reason } = req.body;
+
+    if (!employeeId || !date || !period || !checkInTime) {
+      return res.status(400).json({ message: 'employeeId, date, period, and checkInTime are required' });
+    }
+    if (!['morning', 'evening'].includes(period)) {
+      return res.status(400).json({ message: 'Period must be morning or evening' });
+    }
+
+    const employee = await Employee.findById(employeeId);
+    if (!employee) {
+      return res.status(404).json({ message: 'Employee not found' });
+    }
+
+    const existing = await Attendance.findOne({ employeeId, date, period });
+    if (existing) {
+      return res.status(409).json({ message: `Attendance already exists for ${period} on ${date}` });
+    }
+
+    const checkIn = new Date(checkInTime);
+    const totalMinutes = checkOutTime
+      ? Math.round((new Date(checkOutTime) - checkIn) / 60000)
+      : 0;
+
+    const attendance = await Attendance.create({
+      employeeId,
+      date,
+      period,
+      checkInTime: checkIn,
+      checkOutTime: checkOutTime ? new Date(checkOutTime) : null,
+      totalMinutes,
+      normalHours: totalMinutes / 60,
+      checkoutType: checkOutTime ? 'manual' : undefined,
+      checkOutReason: checkOutTime ? 'manual' : undefined,
+      autoCheckout: false,
+    });
+
+    await AuditLog.create({
+      employeeId,
+      action: checkOutTime ? 'manual_checkout' : 'checkin',
+      ip: req.headers['x-forwarded-for'] || req.connection.remoteAddress,
+      deviceId: req.headers['x-device-id'],
+      userAgent: req.headers['user-agent'],
+      metadata: { adminId: req.employee._id.toString(), reason, manual: true },
+    });
+
+    res.status(201).json({
+      message: 'Attendance record created',
+      attendance: {
+        id: attendance._id,
+        employeeId: attendance.employeeId,
+        date: attendance.date,
+        period: attendance.period,
+        checkInTime: attendance.checkInTime,
+        checkOutTime: attendance.checkOutTime,
+        totalMinutes: attendance.totalMinutes,
+      },
+    });
+  } catch (error) {
+    console.error('Manual attendance error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

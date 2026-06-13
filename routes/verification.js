@@ -54,7 +54,7 @@ function validateQrToken(token) {
       .digest('hex');
     if (!crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(expectedHmac))) return false;
     const currentSlot = Math.floor(Date.now() / 30000);
-    if (timeSlot !== String(currentSlot)) return false;
+    if (timeSlot !== String(currentSlot) && timeSlot !== String(currentSlot - 1)) return false;
     return true;
   } catch {
     return false;

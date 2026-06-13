@@ -1,5 +1,6 @@
 const express = require('express');
 const Attendance = require('../models/Attendance');
+const AuditLog = require('../models/AuditLog');
 const { authenticate } = require('../middleware/auth');
 const { performCheckIn } = require('../utils/attendanceHelper');
 const { validateGeofence } = require('../services/settingsService');
@@ -43,6 +44,14 @@ router.post('/checkin', authenticate, async (req, res) => {
       employeeName: req.employee.fullName,
       employeeNumber: req.employee.employeeNumber,
       period,
+    });
+
+    await AuditLog.create({
+      employeeId: req.employee._id,
+      action: 'checkin',
+      ip: req.ip,
+      userAgent: req.headers['user-agent'] || null,
+      metadata: { period, attendanceId: result.attendance.id, lat, lng },
     });
 
     res.json({ message: 'Check-in successful', attendance: result.attendance });
@@ -118,6 +127,22 @@ router.post('/checkout', authenticate, async (req, res) => {
       employeeName: req.employee.fullName,
       employeeNumber: req.employee.employeeNumber,
       period,
+    });
+
+    await AuditLog.create({
+      employeeId: req.employee._id,
+      action: autoCheckout ? 'auto_checkout' : 'checkout',
+      ip: req.ip,
+      userAgent: req.headers['user-agent'] || null,
+      deviceId: attendance.deviceId || null,
+      metadata: {
+        period,
+        attendanceId: attendance._id,
+        checkOutReason: attendance.checkOutReason,
+        autoCheckout: !!autoCheckout,
+        lat,
+        lng,
+      },
     });
 
     res.json({

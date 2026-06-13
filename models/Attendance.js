@@ -48,6 +48,7 @@ const attendanceSchema = new mongoose.Schema({
   heartbeatCount: { type: Number, default: 0 },
   mockDetected: { type: Boolean, default: false },
   mockCount: { type: Number, default: 0 },
+  velocityAnomalies: { type: Number, default: 0 },
   locationLost: { type: Boolean, default: false },
   locationLostSince: { type: Date, default: null },
   consecutiveOutsideCount: { type: Number, default: 0 },

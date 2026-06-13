@@ -1,8 +1,27 @@
 const Attendance = require('../models/Attendance');
 const Heartbeat = require('../models/Heartbeat');
 const { getSettings } = require('./settingsService');
-const { validateGeofence } = require('../utils/haversine');
+const { haversineDistance, validateGeofence } = require('../utils/haversine');
 const { emitToUser, emitToAll } = require('./socketService');
+
+async function detectVelocityAnomaly(attendanceId, lat, lng, accuracy, now) {
+  if (lat == null || lng == null) return false;
+  if (accuracy != null && accuracy > 100) return false;
+
+  const lastHeartbeat = await Heartbeat.findOne(
+    { attendanceId, lat: { $ne: null }, lng: { $ne: null }, timestamp: { $lt: now } },
+    { lat: 1, lng: 1, timestamp: 1, _id: 0 },
+    { sort: { timestamp: -1 } }
+  );
+  if (!lastHeartbeat) return false;
+
+  const elapsedSec = (now - lastHeartbeat.timestamp) / 1000;
+  if (elapsedSec < 5 || elapsedSec > 1800) return false;
+
+  const distance = haversineDistance(lat, lng, lastHeartbeat.lat, lastHeartbeat.lng);
+  const speedMps = distance / elapsedSec;
+  return speedMps > 28;
+}
 
 async function processHeartbeat(employeeId, attendanceId, { lat, lng, accuracy, isMock, battery, networkType, deviceId, ip }) {
   const attendance = await Attendance.findOne({
@@ -20,9 +39,17 @@ async function processHeartbeat(employeeId, attendanceId, { lat, lng, accuracy, 
     attendance.location = { lat, lng };
   }
 
-  if (isMock === true || isMock === 'true') {
+  const clientMock = isMock === true || isMock === 'true';
+  if (clientMock) {
     attendance.mockDetected = true;
     attendance.mockCount = (attendance.mockCount || 0) + 1;
+  }
+
+  const velocityAnomaly = await detectVelocityAnomaly(attendanceId, lat, lng, accuracy, now);
+  if (velocityAnomaly) {
+    attendance.mockDetected = true;
+    attendance.mockCount = (attendance.mockCount || 0) + 1;
+    attendance.velocityAnomalies = (attendance.velocityAnomalies || 0) + 1;
   }
 
   if (lat == null || lng == null || (accuracy != null && accuracy > 100)) {
@@ -41,7 +68,7 @@ async function processHeartbeat(employeeId, attendanceId, { lat, lng, accuracy, 
   let geoViolation = false;
   let checkedOut = false;
 
-  if (lat != null && lng != null && !isMock) {
+  if (lat != null && lng != null) {
     const settings = await getSettings();
     const geoCheck = validateGeofence(
       lat, lng,

@@ -16,6 +16,7 @@ const verificationRoutes = require('./routes/verification');
 const notificationRoutes = require('./routes/notifications');
 const settingsRoutes = require('./routes/settings');
 const heartbeatRoutes = require('./routes/heartbeat');
+const auditLogRoutes = require('./routes/auditLog');
 const { startServerSweep } = require('./scheduler/serverSweep');
 const { initFirebase } = require('./services/firebase');
 const { initSocketIO } = require('./services/socketService');
@@ -61,6 +62,7 @@ app.use('/api', verificationRoutes);
 app.use('/api', notificationRoutes);
 app.use('/api', settingsRoutes);
 app.use('/api', heartbeatRoutes);
+app.use('/api', auditLogRoutes);
 
 app.get('/api/health', async (req, res) => {
   const dbState = mongoose.connection.readyState;

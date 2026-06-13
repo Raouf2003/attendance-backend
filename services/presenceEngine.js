@@ -105,6 +105,9 @@ async function performAutoCheckout(attendance, reason, { lat, lng } = {}) {
   attendance.checkoutType = 'auto';
   attendance.checkOutReason = reason;
   attendance.lastHeartbeatAt = now;
+  if (reason === 'device_inactive_timeout') {
+    attendance.deviceInactiveTimeout = true;
+  }
   if (lat != null && lng != null) {
     attendance.location = { lat, lng };
   }
@@ -125,15 +128,18 @@ async function performAutoCheckout(attendance, reason, { lat, lng } = {}) {
 }
 
 async function processStaleHeartbeats() {
-  const staleDeadline = new Date(Date.now() - 2 * 60 * 1000);
+  const staleDeadline = new Date(Date.now() - 5 * 60 * 1000);
   const staleRecords = await Attendance.find({
     checkOutTime: null,
-    lastHeartbeatAt: { $lt: staleDeadline },
+    $or: [
+      { lastHeartbeatAt: { $lt: staleDeadline } },
+      { lastHeartbeatAt: null, checkInTime: { $lt: staleDeadline } },
+    ],
   }).limit(100);
 
   for (const record of staleRecords) {
-    await performAutoCheckout(record, 'heartbeat_timeout');
-    console.log(`[Presence] Auto-checkout ${record._id}: heartbeat timeout`);
+    await performAutoCheckout(record, 'device_inactive_timeout');
+    console.log(`[Presence] Auto-checkout ${record._id}: device inactive timeout`);
   }
 
   return staleRecords.length;

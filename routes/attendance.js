@@ -21,14 +21,14 @@ function getPeriodStatus(record) {
 
 router.post('/checkin', authenticate, async (req, res) => {
   try {
-    const { period, lat, lng } = req.body;
+    const { period, lat, lng, clientEventTime } = req.body;
 
     const geoCheck = await validateGeofence(lat, lng);
     if (!geoCheck.valid) {
       return res.status(403).json({ message: geoCheck.message, error: 'geofence_blocked' });
     }
 
-    const result = await performCheckIn(req.employee._id, period, { lat, lng });
+    const result = await performCheckIn(req.employee._id, period, { lat, lng, clientEventTime });
     if (!result.success) {
       return res.status(result.status).json({ message: result.message });
     }
@@ -54,7 +54,7 @@ router.post('/checkin', authenticate, async (req, res) => {
 
 router.post('/checkout', authenticate, async (req, res) => {
   try {
-    const { period, autoCheckout, lat, lng } = req.body;
+    const { period, autoCheckout, lat, lng, clientEventTime, reason } = req.body;
 
     if (!period || !['morning', 'evening'].includes(period)) {
       return res.status(400).json({ message: 'Period must be morning or evening' });
@@ -89,11 +89,17 @@ router.post('/checkout', authenticate, async (req, res) => {
     }
 
     attendance.checkOutTime = now;
+    if (clientEventTime) {
+      attendance.clientCheckOutTime = new Date(clientEventTime);
+    }
     attendance.totalMinutes = Math.round((now - attendance.checkInTime) / 60000);
     attendance.normalHours = attendance.totalMinutes / 60;
     if (autoCheckout) {
       attendance.autoCheckout = true;
       attendance.checkoutType = 'auto';
+      if (reason) {
+        attendance.checkOutReason = reason;
+      }
       if (lat != null && lng != null) {
         attendance.location = { lat, lng };
       }
@@ -118,12 +124,18 @@ router.post('/checkout', authenticate, async (req, res) => {
       message: 'Check-out successful',
       attendance: {
         id: attendance._id,
+        date: attendance.date,
         period: attendance.period,
         checkInTime: attendance.checkInTime,
         checkOutTime: attendance.checkOutTime,
+        clientCheckInTime: attendance.clientCheckInTime,
+        clientCheckOutTime: attendance.clientCheckOutTime,
         totalMinutes: attendance.totalMinutes,
+        normalHours: attendance.normalHours,
         autoCheckout: attendance.autoCheckout,
         checkoutType: attendance.checkoutType,
+        checkOutReason: attendance.checkOutReason,
+        location: attendance.location,
       },
     });
   } catch (error) {

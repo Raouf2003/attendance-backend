@@ -5,7 +5,7 @@ function getDateKey(date = new Date()) {
   return date.toISOString().split('T')[0];
 }
 
-async function performCheckIn(employeeId, period, location) {
+async function performCheckIn(employeeId, period, { lat, lng, clientEventTime } = {}) {
   if (!period || !['morning', 'evening'].includes(period)) {
     return { success: false, status: 400, message: 'Period must be morning or evening' };
   }
@@ -30,12 +30,13 @@ async function performCheckIn(employeeId, period, location) {
     date: dateKey,
     period,
     checkInTime: now,
+    clientCheckInTime: clientEventTime ? new Date(clientEventTime) : now,
   };
 
-  if (location && location.lat != null && location.lng != null) {
+  if (lat != null && lng != null) {
     attendanceData.location = {
-      lat: parseFloat(location.lat),
-      lng: parseFloat(location.lng),
+      lat: parseFloat(lat),
+      lng: parseFloat(lng),
     };
   }
 
@@ -48,6 +49,7 @@ async function performCheckIn(employeeId, period, location) {
       id: attendance._id,
       period: attendance.period,
       checkInTime: attendance.checkInTime,
+      clientCheckInTime: attendance.clientCheckInTime,
       date: attendance.date,
       location: attendance.location,
     },

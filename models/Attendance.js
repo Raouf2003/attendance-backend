@@ -51,6 +51,9 @@ const attendanceSchema = new mongoose.Schema({
   locationLost: { type: Boolean, default: false },
   locationLostSince: { type: Date, default: null },
   consecutiveOutsideCount: { type: Number, default: 0 },
+  clientCheckInTime: { type: Date, default: null },
+  clientCheckOutTime: { type: Date, default: null },
+  deviceInactiveTimeout: { type: Boolean, default: false },
   checkOutReason: {
     type: String,
     enum: [
@@ -58,6 +61,7 @@ const attendanceSchema = new mongoose.Schema({
       'geofence_violation',
       'geofence_violation_server',
       'heartbeat_timeout',
+      'device_inactive_timeout',
       'location_lost',
       'location_lost_timeout',
       'shift_end',

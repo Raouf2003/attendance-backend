@@ -6,6 +6,7 @@ const Report = require('../models/Report');
 const { authenticate, adminOnly } = require('../middleware/auth');
 const { paginate, paginatedResponse } = require('../utils/pagination');
 const { cacheMiddleware, clearCache } = require('../middleware/cache');
+const { formatUtcDateLocal } = require('../services/settingsService');
 
 
 const router = express.Router();
@@ -362,8 +363,8 @@ router.get('/reports/daily/export', authenticate, adminOnly, async (req, res) =>
 
     for (const r of records) {
       if (!r.employeeId) continue;
-      const checkIn = r.checkInTime ? new Date(r.checkInTime).toLocaleTimeString('en-GB', { hour12: false }) : '-';
-      const checkOut = r.checkOutTime ? new Date(r.checkOutTime).toLocaleTimeString('en-GB', { hour12: false }) : '-';
+      const checkIn = formatUtcDateLocal(r.checkInTime);
+      const checkOut = formatUtcDateLocal(r.checkOutTime);
       csv += `${sanitizeCsvField(r.employeeId.fullName)},${sanitizeCsvField(r.employeeId.employeeNumber)},${sanitizeCsvField(r.period)},${sanitizeCsvField(checkIn)},${sanitizeCsvField(checkOut)},${r.totalMinutes || 0}\n`;
     }
 
@@ -446,8 +447,8 @@ router.get('/reports/employee/:id/export', authenticate, adminOnly, async (req, 
     let csv = 'Date,Period,Check In,Check Out,Total Minutes\n';
 
     for (const r of records) {
-      const checkIn = r.checkInTime ? new Date(r.checkInTime).toLocaleTimeString('en-GB', { hour12: false }) : '-';
-      const checkOut = r.checkOutTime ? new Date(r.checkOutTime).toLocaleTimeString('en-GB', { hour12: false }) : '-';
+      const checkIn = formatUtcDateLocal(r.checkInTime);
+      const checkOut = formatUtcDateLocal(r.checkOutTime);
       csv += `${sanitizeCsvField(r.date)},${sanitizeCsvField(r.period)},${sanitizeCsvField(checkIn)},${sanitizeCsvField(checkOut)},${r.totalMinutes || 0}\n`;
     }
 

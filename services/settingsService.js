@@ -10,7 +10,7 @@ const DEFAULTS = {
   allowedRadius: 50,
 };
 
-const TIMEZONE_OFFSETS = [1];
+const TIMEZONE_OFFSETS = [1]; // Algeria (CET, UTC+1, no DST)
 
 let cachedSettings = null;
 
@@ -115,6 +115,15 @@ async function validateGeofence(lat, lng) {
   return haversineValidate(lat, lng, settings.companyLocation.lat, settings.companyLocation.lng, settings.allowedRadius);
 }
 
+function formatUtcDateLocal(date, offsetHours) {
+  if (!date) return '-';
+  const d = new Date(date);
+  const local = new Date(d.getTime() + (offsetHours || TIMEZONE_OFFSETS[0]) * 3600000);
+  const h = String(local.getUTCHours()).padStart(2, '0');
+  const m = String(local.getUTCMinutes()).padStart(2, '0');
+  return `${h}:${m}`;
+}
+
 module.exports = {
   getSettings,
   invalidateCache,
@@ -125,5 +134,6 @@ module.exports = {
   localToUtcMinutes,
   utcMinInRange,
   parseHHmm,
+  formatUtcDateLocal,
   DEFAULTS,
 };

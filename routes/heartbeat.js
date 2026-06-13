@@ -63,7 +63,7 @@ router.post('/heartbeat', authenticate, async (req, res) => {
     }
 
     if (result.action === 'no_active_attendance') {
-      return res.status(400).json({ message: 'No active attendance found' });
+      return res.json(result);
     }
 
     res.json(result);

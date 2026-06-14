@@ -6,6 +6,7 @@ const { performCheckIn } = require('../utils/attendanceHelper');
 const { validateGeofence } = require('../services/settingsService');
 const { getCurrentPeriod, getSettings } = require('../services/settingsService');
 const { emitToUser, emitToAll } = require('../services/socketService');
+const { clearCache } = require('../middleware/cache');
 
 const router = express.Router();
 
@@ -38,6 +39,7 @@ router.post('/checkin', authenticate, async (req, res) => {
       period,
       attendanceId: result.attendance.id,
     });
+    clearCache();
     emitToAll('attendance_updated', {
       type: 'checkin',
       employeeId: req.employee._id.toString(),
@@ -121,6 +123,7 @@ router.post('/checkout', authenticate, async (req, res) => {
       attendanceId: attendance._id,
       autoCheckout: attendance.autoCheckout,
     });
+    clearCache();
     emitToAll('attendance_updated', {
       type: 'checkout',
       employeeId: req.employee._id.toString(),

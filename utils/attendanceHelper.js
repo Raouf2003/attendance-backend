@@ -20,11 +20,6 @@ async function performCheckIn(employeeId, period, { lat, lng, clientEventTime } 
 
   const dateKey = getDateKey(now);
 
-  const existing = await Attendance.findOne({ employeeId, date: dateKey, period });
-  if (existing) {
-    return { success: false, status: 400, message: `Already checked in for ${period} period` };
-  }
-
   const attendanceData = {
     employeeId,
     date: dateKey,
@@ -41,7 +36,14 @@ async function performCheckIn(employeeId, period, { lat, lng, clientEventTime } 
   }
 
   const attendance = new Attendance(attendanceData);
-  await attendance.save();
+  try {
+    await attendance.save();
+  } catch (err) {
+    if (err.name === 'MongoServerError' && err.code === 11000) {
+      return { success: false, status: 400, message: `Already checked in for ${period} period` };
+    }
+    throw err;
+  }
 
   return {
     success: true,

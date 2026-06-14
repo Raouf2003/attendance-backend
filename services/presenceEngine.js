@@ -3,6 +3,7 @@ const Heartbeat = require('../models/Heartbeat');
 const { getSettings } = require('./settingsService');
 const { haversineDistance, validateGeofence } = require('../utils/haversine');
 const { emitToUser, emitToAll } = require('./socketService');
+const { clearCache } = require('../middleware/cache');
 
 async function detectVelocityAnomaly(attendanceId, lat, lng, accuracy, now) {
   if (lat == null || lng == null) return false;
@@ -139,6 +140,7 @@ async function performAutoCheckout(attendance, reason, { lat, lng } = {}) {
     attendance.location = { lat, lng };
   }
   await attendance.save();
+  clearCache();
 
   emitToUser(attendance.employeeId, 'attendance_updated', {
     type: 'checkout',
@@ -214,6 +216,7 @@ async function batchEndShift(period) {
   }));
 
   await Attendance.bulkWrite(bulkOps);
+  clearCache();
 
   for (const r of records) {
     emitToUser(r.employeeId, 'attendance_updated', {
